@@ -4,6 +4,21 @@ export type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: stri
 
 type StreamChunkHandler = (text: string) => void
 
+function isAbortError(e: unknown): boolean {
+  return (
+    (typeof DOMException !== 'undefined' && e instanceof DOMException && e.name === 'AbortError') ||
+    (typeof e === 'object' && e !== null && (e as any).name === 'AbortError')
+  )
+}
+
+function abortWithReason(ctrl: AbortController, reason: unknown) {
+  try {
+    ;(ctrl as any).abort(reason)
+  } catch {
+    ctrl.abort()
+  }
+}
+
 function getOpenAiCompatPathPrefix(baseUrl: string): string {
   return baseUrl.includes('open.bigmodel.cn') ? '' : '/v1'
 }
@@ -113,122 +128,137 @@ async function streamOpenAiCompat(params: {
   allowReasoningFallbackWhenContentEmpty?: boolean
 }): Promise<string> {
   const ctrl = new AbortController()
-  const timer = window.setTimeout(() => ctrl.abort(), params.timeoutMs)
+  let timedOut = false
+  const timeoutError = new Error(`请求超时(${params.timeoutMs}ms)`)
+  const timer = window.setTimeout(() => {
+    timedOut = true
+    abortWithReason(ctrl, timeoutError)
+  }, params.timeoutMs)
 
   try {
-    const res = await fetch(params.url, {
-      method: 'POST',
-      headers: params.headers,
-      body: JSON.stringify({ ...params.body, stream: true }),
-      signal: ctrl.signal
-    })
-
-    if (!res.ok) {
-      const detail = await readErrorDetail(res)
-      throw new Error(`AI请求失败: ${res.status} ${detail}`.trim())
-    }
-
-    const reader = res.body?.getReader()
-    if (!reader) throw new Error('无法获取响应流')
-
-    const decoder = new TextDecoder()
-    let buffer = ''
-    let text = ''
-    let fallbackText = ''
-
-    const thinkingState = { inThinking: false, buffer: '' }
-
     try {
-      for (;;) {
-        const { done, value } = await reader.read()
-        if (done) break
+      const res = await fetch(params.url, {
+        method: 'POST',
+        headers: params.headers,
+        body: JSON.stringify({ ...params.body, stream: true }),
+        signal: ctrl.signal
+      })
 
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
+      if (!res.ok) {
+        const detail = await readErrorDetail(res)
+        throw new Error(`AI请求失败: ${res.status} ${detail}`.trim())
+      }
 
-        for (const line of lines) {
-          const trimmed = line.trim()
-          if (!trimmed || !trimmed.startsWith('data: ')) continue
-          const data = trimmed.slice('data: '.length)
-          if (data === '[DONE]') continue
+      const reader = res.body?.getReader()
+      if (!reader) throw new Error('无法获取响应流')
 
-          try {
-            const j = JSON.parse(data)
-            const deltaObj = j?.choices?.[0]?.delta
-            const delta = deltaObj?.content ?? deltaObj?.text
-            const reasoningDelta =
-              deltaObj?.reasoning_content ??
-              deltaObj?.reasoning ??
-              deltaObj?.thinking_content ??
-              deltaObj?.thinking
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let text = ''
+      let fallbackText = ''
 
-            if (typeof delta === 'string' && delta) {
-              const out = params.stripThinking
-                ? stripThinkingIncremental({ chunk: delta, state: thinkingState })
-                : delta
+      const thinkingState = { inThinking: false, buffer: '' }
 
-              if (out) {
-                text += out
-                params.onChunk?.(out)
-              }
-              continue
-            }
+      try {
+        for (;;) {
+          const { done, value } = await reader.read()
+          if (done) break
 
-            if (typeof reasoningDelta === 'string' && reasoningDelta) {
-              if (params.stripThinking) {
-                if (params.allowReasoningFallbackWhenContentEmpty) fallbackText += reasoningDelta
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || ''
+
+          for (const line of lines) {
+            const trimmed = line.trim()
+            if (!trimmed || !trimmed.startsWith('data: ')) continue
+            const data = trimmed.slice('data: '.length)
+            if (data === '[DONE]') continue
+
+            try {
+              const j = JSON.parse(data)
+              const deltaObj = j?.choices?.[0]?.delta
+              const delta = deltaObj?.content ?? deltaObj?.text
+              const reasoningDelta =
+                deltaObj?.reasoning_content ??
+                deltaObj?.reasoning ??
+                deltaObj?.thinking_content ??
+                deltaObj?.thinking
+
+              if (typeof delta === 'string' && delta) {
+                const out = params.stripThinking
+                  ? stripThinkingIncremental({ chunk: delta, state: thinkingState })
+                  : delta
+
+                if (out) {
+                  text += out
+                  params.onChunk?.(out)
+                }
                 continue
               }
-              fallbackText += reasoningDelta
-              params.onChunk?.(reasoningDelta)
+
+              if (typeof reasoningDelta === 'string' && reasoningDelta) {
+                if (params.stripThinking) {
+                  if (params.allowReasoningFallbackWhenContentEmpty) fallbackText += reasoningDelta
+                  continue
+                }
+                fallbackText += reasoningDelta
+                params.onChunk?.(reasoningDelta)
+              }
+            } catch {
+              // 忽略单个chunk解析失败
             }
-          } catch {
-            // 忽略单个chunk解析失败
           }
         }
+      
+        // 处理最后缓冲区中的内容（修复截断问题）
+        if (buffer.trim()) {
+          const remainingLines = buffer.split('\n')
+          for (const line of remainingLines) {
+            const trimmed = line.trim()
+            if (!trimmed || !trimmed.startsWith('data: ')) continue
+            const data = trimmed.slice('data: '.length)
+            if (data === '[DONE]') continue
+            
+            try {
+              const j = JSON.parse(data)
+              const deltaObj = j?.choices?.[0]?.delta
+              const delta = deltaObj?.content ?? deltaObj?.text
+              
+              if (typeof delta === 'string' && delta) {
+                const out = params.stripThinking
+                  ? stripThinkingIncremental({ chunk: delta, state: thinkingState })
+                  : delta
+                
+                if (out) {
+                  text += out
+                  params.onChunk?.(out)
+                }
+              }
+            } catch {
+              // 忽略解析失败
+            }
+          }
+        }
+      } finally {
+        reader.releaseLock()
       }
       
-      // 处理最后缓冲区中的内容（修复截断问题）
-      if (buffer.trim()) {
-        const remainingLines = buffer.split('\n')
-        for (const line of remainingLines) {
-          const trimmed = line.trim()
-          if (!trimmed || !trimmed.startsWith('data: ')) continue
-          const data = trimmed.slice('data: '.length)
-          if (data === '[DONE]') continue
-          
-          try {
-            const j = JSON.parse(data)
-            const deltaObj = j?.choices?.[0]?.delta
-            const delta = deltaObj?.content ?? deltaObj?.text
-            
-            if (typeof delta === 'string' && delta) {
-              const out = params.stripThinking
-                ? stripThinkingIncremental({ chunk: delta, state: thinkingState })
-                : delta
-              
-              if (out) {
-                text += out
-                params.onChunk?.(out)
-              }
-            }
-          } catch {
-            // 忽略解析失败
-          }
-        }
+      if (params.stripThinking && thinkingState.buffer && !thinkingState.inThinking) {
+        text += thinkingState.buffer
+        params.onChunk?.(thinkingState.buffer)
+        thinkingState.buffer = ''
       }
-    } finally {
-      reader.releaseLock()
-    }
 
-    if (params.stripThinking && thinkingState.buffer && !thinkingState.inThinking) {
-      text += thinkingState.buffer
-      params.onChunk?.(thinkingState.buffer)
-      thinkingState.buffer = ''
+      return text || fallbackText
+    } catch (e) {
+      if (isAbortError(e) || ctrl.signal.aborted) {
+        if (timedOut) throw timeoutError
+        const reason = (ctrl.signal as any).reason
+        if (reason instanceof Error) throw reason
+        throw new Error('请求已取消')
+      }
+      throw e
     }
-
-    return text || fallbackText
   } finally {
     window.clearTimeout(timer)
   }
@@ -253,35 +283,51 @@ export async function customGenerateText(params: {
 
   const timeoutMs = typeof params.timeoutMs === 'number' ? params.timeoutMs : 60000
   const ctrl = new AbortController()
-  const timer = window.setTimeout(() => ctrl.abort(), timeoutMs)
+  let timedOut = false
+  const timeoutError = new Error(`请求超时(${timeoutMs}ms)`)
+  const timer = window.setTimeout(() => {
+    timedOut = true
+    abortWithReason(ctrl, timeoutError)
+  }, timeoutMs)
 
   try {
-    const doRequest = async (url: string) => {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ prompt: params.prompt, system: params.system }),
-        signal: ctrl.signal
-      })
-
-      if (!res.ok) {
-        const detail = await readErrorDetail(res)
-        throw new Error(`AI请求失败: ${res.status} ${detail}`.trim())
-      }
-
-      const ct = res.headers.get('content-type') || ''
-      if (ct.includes('application/json')) {
-        const j = (await res.json().catch(() => null)) as any
-        return String(j?.text || j?.content || j?.result || j?.message || '')
-      }
-      return await res.text()
-    }
-
     try {
-      return await doRequest(primaryUrl)
+      const doRequest = async (url: string) => {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ prompt: params.prompt, system: params.system }),
+          signal: ctrl.signal
+        })
+
+        if (!res.ok) {
+          const detail = await readErrorDetail(res)
+          throw new Error(`AI请求失败: ${res.status} ${detail}`.trim())
+        }
+
+        const ct = res.headers.get('content-type') || ''
+        if (ct.includes('application/json')) {
+          const j = (await res.json().catch(() => null)) as any
+          return String(j?.text || j?.content || j?.result || j?.message || '')
+        }
+        return await res.text()
+      }
+
+      try {
+        return await doRequest(primaryUrl)
+      } catch (e) {
+        if (!fallbackUrl) throw e
+        if (ctrl.signal.aborted) throw e
+        return await doRequest(fallbackUrl)
+      }
     } catch (e) {
-      if (!fallbackUrl) throw e
-      return await doRequest(fallbackUrl)
+      if (isAbortError(e) || ctrl.signal.aborted) {
+        if (timedOut) throw timeoutError
+        const reason = (ctrl.signal as any).reason
+        if (reason instanceof Error) throw reason
+        throw new Error('请求已取消')
+      }
+      throw e
     }
   } finally {
     window.clearTimeout(timer)
@@ -299,25 +345,40 @@ export async function listModels(params: { baseUrl: string; apiKey?: string; tim
 
   const timeoutMs = typeof params.timeoutMs === 'number' ? params.timeoutMs : 20000
   const ctrl = new AbortController()
-  const timer = window.setTimeout(() => ctrl.abort(), timeoutMs)
+  let timedOut = false
+  const timeoutError = new Error(`请求超时(${timeoutMs}ms)`)
+  const timer = window.setTimeout(() => {
+    timedOut = true
+    abortWithReason(ctrl, timeoutError)
+  }, timeoutMs)
 
   try {
-    const res = await fetch(url, { method: 'GET', headers, signal: ctrl.signal })
-    if (!res.ok) {
-      const ct = res.headers.get('content-type') || ''
-      let detail = ''
-      if (ct.includes('application/json')) {
-        const j = await res.json().catch(() => null)
-        detail = j ? JSON.stringify(j) : ''
-      } else {
-        detail = await res.text().catch(() => '')
+    try {
+      const res = await fetch(url, { method: 'GET', headers, signal: ctrl.signal })
+      if (!res.ok) {
+        const ct = res.headers.get('content-type') || ''
+        let detail = ''
+        if (ct.includes('application/json')) {
+          const j = await res.json().catch(() => null)
+          detail = j ? JSON.stringify(j) : ''
+        } else {
+          detail = await res.text().catch(() => '')
+        }
+        throw new Error(`获取模型失败: ${res.status} ${detail}`.trim())
       }
-      throw new Error(`获取模型失败: ${res.status} ${detail}`.trim())
+      const data = (await res.json()) as any
+      const items: any[] = Array.isArray(data?.data) ? data.data : []
+      const models = items.map((x) => String(x?.id || x?.name || '')).filter(Boolean)
+      return Array.from(new Set(models))
+    } catch (e) {
+      if (isAbortError(e) || ctrl.signal.aborted) {
+        if (timedOut) throw timeoutError
+        const reason = (ctrl.signal as any).reason
+        if (reason instanceof Error) throw reason
+        throw new Error('请求已取消')
+      }
+      throw e
     }
-    const data = (await res.json()) as any
-    const items: any[] = Array.isArray(data?.data) ? data.data : []
-    const models = items.map((x) => String(x?.id || x?.name || '')).filter(Boolean)
-    return Array.from(new Set(models))
   } finally {
     window.clearTimeout(timer)
   }
@@ -371,31 +432,46 @@ export async function chatCompletionText(params: {
   }
 
   const ctrl = new AbortController()
-  const timer = window.setTimeout(() => ctrl.abort(), timeoutMs)
+  let timedOut = false
+  const timeoutError = new Error(`请求超时(${timeoutMs}ms)`)
+  const timer = window.setTimeout(() => {
+    timedOut = true
+    abortWithReason(ctrl, timeoutError)
+  }, timeoutMs)
 
   try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-      signal: ctrl.signal
-    })
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+        signal: ctrl.signal
+      })
 
-    if (!res.ok) {
-      const detail = await readErrorDetail(res)
-      throw new Error(`AI请求失败: ${res.status} ${detail}`.trim())
+      if (!res.ok) {
+        const detail = await readErrorDetail(res)
+        throw new Error(`AI请求失败: ${res.status} ${detail}`.trim())
+      }
+
+      const data = (await res.json()) as any
+      const msg = data?.choices?.[0]?.message ?? {}
+      const content = msg.content
+      const reasoning =
+        msg.reasoning_content ??
+        msg.reasoning ??
+        msg.thinking_content ??
+        msg.thinking
+      if (typeof content === 'string' && content) return content
+      return typeof reasoning === 'string' ? reasoning : ''
+    } catch (e) {
+      if (isAbortError(e) || ctrl.signal.aborted) {
+        if (timedOut) throw timeoutError
+        const reason = (ctrl.signal as any).reason
+        if (reason instanceof Error) throw reason
+        throw new Error('请求已取消')
+      }
+      throw e
     }
-
-    const data = (await res.json()) as any
-    const msg = data?.choices?.[0]?.message ?? {}
-    const content = msg.content
-    const reasoning =
-      msg.reasoning_content ??
-      msg.reasoning ??
-      msg.thinking_content ??
-      msg.thinking
-    if (typeof content === 'string' && content) return content
-    return typeof reasoning === 'string' ? reasoning : ''
   } finally {
     window.clearTimeout(timer)
   }

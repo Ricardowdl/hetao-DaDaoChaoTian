@@ -7,9 +7,9 @@ export function normalizeBaseUrl(url: string) {
 export function getPresetBaseUrl(preset: AiProviderPreset): string {
   switch (preset) {
     case 'official':
-      return import.meta.env.DEV ? '/official' : 'http://43.160.245.153/v1'
+      return '/official'
     case 'deepseek':
-      return import.meta.env.DEV ? '/deepseek' : 'https://api.deepseek.com'
+      return '/deepseek'
     case 'custom':
     default:
       return ''
