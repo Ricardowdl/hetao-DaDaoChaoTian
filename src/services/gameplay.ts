@@ -410,7 +410,7 @@ export async function runGameplayTurn(params: {
 ${characterSummary}
 
 # 游戏状态
-你正在修仙世界《大道朝天》中扮演GM。以下是当前完整游戏存档(JSON格式):
+你正在修仙世界《纵横诸天》中扮演GM。以下是当前完整游戏存档(JSON格式):
 ${JSON.stringify(cleanedSaveData)}
 `.trim()
 

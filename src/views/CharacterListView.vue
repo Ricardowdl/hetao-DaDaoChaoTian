@@ -333,7 +333,7 @@ async function backToModeSelection() {
 
 <style scoped>
 .save-root {
-  min-height: 100vh;
+  min-height: var(--app-vh, 100vh);
   background: #1e293b;
   color: white;
 }

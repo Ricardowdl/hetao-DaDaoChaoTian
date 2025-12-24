@@ -2,7 +2,8 @@
   <div class="app-container">
     <div class="top-nav">
       <div class="nav-left">
-        <div class="nav-btn title">大道朝天</div>
+        <button class="icon-btn mobile-only" type="button" title="功能菜单" @click="mobileMenuOpen = true">☰</button>
+        <div class="nav-btn title">纵横诸天</div>
         <button class="nav-btn active" type="button">{{ gameState.玩家角色状态.境界.名称 }}</button>
       </div>
       <div class="nav-center">
@@ -10,7 +11,42 @@
         <span class="time-text">{{ timeText }}</span>
       </div>
       <div class="nav-right">
+        <button class="icon-btn mobile-only" type="button" title="角色状态" @click="openPanel('修行管理')">📊</button>
         <button class="icon-btn" type="button" title="全屏" @click="toggleFullscreen">⛶</button>
+        <button class="icon-btn mobile-only" type="button" title="设置" @click="openSettings">⚙️</button>
+      </div>
+    </div>
+
+    <div v-if="mobileMenuOpen" class="mobile-menu-overlay" @click.self="mobileMenuOpen = false">
+      <div class="mobile-menu-sheet" @click.stop>
+        <div class="mobile-menu-head">
+          <div class="mobile-menu-title">游戏功能</div>
+          <button class="icon-btn" type="button" title="关闭" @click="mobileMenuOpen = false">✕</button>
+        </div>
+
+        <div class="mobile-menu-meta">
+          <div class="mobile-menu-meta-line">{{ locationText }}</div>
+          <div class="mobile-menu-meta-line">{{ timeText }}</div>
+        </div>
+
+        <div class="mobile-menu-body">
+          <div class="mobile-menu-grid">
+            <button class="mobile-menu-btn" type="button" @click="openMobilePanel('背包物品')">🎒 背包</button>
+            <button class="mobile-menu-btn" type="button" @click="openMobilePanel('人物详情')">👤 人物</button>
+            <button class="mobile-menu-btn" type="button" @click="openMobilePanel('修炼功法')">📜 功法</button>
+            <button class="mobile-menu-btn" type="button" @click="openMobilePanel('三千大道')">🌀 大道</button>
+            <button class="mobile-menu-btn" type="button" @click="openMobilePanel('人物关系')">🤝 关系</button>
+            <button class="mobile-menu-btn" type="button" @click="openMobilePanel('宗门信息')">🏯 宗门</button>
+            <button class="mobile-menu-btn" type="button" @click="openMobilePanel('任务日志')">🧾 任务</button>
+            <button class="mobile-menu-btn" type="button" @click="openMobilePanel('世界地图')">🗺️ 地图</button>
+            <button class="mobile-menu-btn" type="button" @click="openMobilePanel('记忆中心')">🧠 记忆</button>
+            <button class="mobile-menu-btn" type="button" @click="openMobilePanel('保存游戏')">💾 存档</button>
+            <button class="mobile-menu-btn" type="button" @click="openMobilePanel('游戏变量')">🧩 变量</button>
+            <button class="mobile-menu-btn" type="button" @click="openMobilePanel('提示词管理')">💡 提示词</button>
+            <button class="mobile-menu-btn" type="button" @click="openSettings(); mobileMenuOpen = false">⚙️ 设置</button>
+            <button class="mobile-menu-btn danger" type="button" @click="exitToMenu">🚪 返回</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -502,6 +538,7 @@ import { useGameStateStore } from '../stores/useGameStateStore'
 import { useSettingsStore } from '../stores/useSettingsStore'
 import { useUIStore } from '../stores/useUIStore'
 import { useActionQueueStore, type PendingAction } from '../stores/useActionQueueStore'
+import { requestWakeLock, releaseWakeLock, setupVisibilityReacquire } from '../utils/wakeLock'
 
 const router = useRouter()
 const characterStore = useCharacterStore()
@@ -533,6 +570,7 @@ const actionQueueStore = useActionQueueStore()
 const showSettings = ref(false)
 const showPanels = ref(false)
 const activePanel = ref('')
+const mobileMenuOpen = ref(false)
 
 const locationText = computed(() => gameState.玩家角色状态?.位置?.描述 || '未知位置')
 
@@ -1124,6 +1162,11 @@ function openPanel(tab: string) {
   showPanels.value = true
 }
 
+function openMobilePanel(tab: string) {
+  mobileMenuOpen.value = false
+  openPanel(tab)
+}
+
 function closeEmbedded() {
   activePanel.value = ''
 }
@@ -1164,6 +1207,7 @@ async function sendTurn() {
 
   try {
     sending.value = true
+    await requestWakeLock()
 
     if (settingsStore.enablePreDialogBackup) {
       const cid = characterStore.当前角色ID
@@ -1232,6 +1276,7 @@ async function sendTurn() {
     }
   } finally {
     sending.value = false
+    await releaseWakeLock()
   }
 }
 
@@ -1327,6 +1372,8 @@ watch(
   { immediate: true }
 )
 
+let cleanupWakeLockVisibility: (() => void) | null = null
+
 onMounted(() => {
   const pending = uiStore.consumePendingAction()
   if (pending) playerInput.value = pending
@@ -1338,6 +1385,7 @@ onMounted(() => {
   })
   scheduler.start()
   window.addEventListener('settingsChanged', onSettingsChanged)
+  cleanupWakeLockVisibility = setupVisibilityReacquire()
   void scrollStoryToBottom()
 })
 
@@ -1345,6 +1393,8 @@ onBeforeUnmount(() => {
   window.removeEventListener('settingsChanged', onSettingsChanged)
   scheduler?.stop()
   scheduler = null
+  cleanupWakeLockVisibility?.()
+  cleanupWakeLockVisibility = null
 })
 </script>
 
@@ -1386,8 +1436,9 @@ onBeforeUnmount(() => {
   --gv-shadow: var(--shadow-1);
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: calc(var(--app-vh, 100vh) * var(--inv-effective-ui-scale, 1));
   overflow: hidden;
+  overflow-x: hidden;
   background: linear-gradient(180deg, var(--bg-1), var(--bg-2));
 }
 
@@ -1395,7 +1446,7 @@ onBeforeUnmount(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 14px;
+  padding: calc(8px + var(--safe-top, 0px)) calc(14px + var(--safe-right, 0px)) 8px calc(14px + var(--safe-left, 0px));
   background: var(--gv-surface-2);
   border-bottom: 1px solid var(--gv-border);
   backdrop-filter: blur(14px);
@@ -1486,12 +1537,98 @@ onBeforeUnmount(() => {
   box-shadow: 0 0 0 3px var(--accent-strong);
 }
 
+.mobile-only {
+  display: none;
+}
+
+.mobile-menu-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2600;
+  background: rgba(2, 6, 23, 0.5);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 12px 12px calc(12px + var(--safe-bottom, 0px));
+}
+
+.mobile-menu-sheet {
+  width: min(520px, 100%);
+  border-radius: 18px;
+  border: 1px solid var(--gv-border);
+  background: var(--gv-surface);
+  box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+}
+
+.mobile-menu-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 12px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+  background: var(--gv-surface-2);
+}
+
+.mobile-menu-meta {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.mobile-menu-meta-line {
+  font-size: 12px;
+  color: var(--text-3);
+  line-height: 1.4;
+}
+
+.mobile-menu-title {
+  font-weight: 900;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.mobile-menu-body {
+  padding: 12px;
+  max-height: calc(var(--app-vh, 100vh) * 0.72);
+  overflow: auto;
+}
+
+.mobile-menu-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.mobile-menu-btn {
+  appearance: none;
+  border: 1px solid var(--gv-border);
+  background: rgba(0, 0, 0, 0.03);
+  color: var(--text-1);
+  border-radius: 14px;
+  padding: 12px 12px;
+  min-height: 48px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.mobile-menu-btn:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.mobile-menu-btn.danger {
+  border-color: rgba(248, 113, 113, 0.55);
+  background: rgba(248, 113, 113, 0.1);
+  color: rgba(185, 28, 28, 0.95);
+}
+
 .main-content-area {
   display: flex;
   flex: 1;
   overflow: hidden;
   gap: 0;
-  padding: 0;
+  padding: 0 var(--safe-right, 0px) 0 var(--safe-left, 0px);
   position: relative;
   background: transparent;
 }
@@ -1953,7 +2090,7 @@ onBeforeUnmount(() => {
 .embedded-body {
   flex: 1;
   overflow: auto;
-  padding: 12px;
+  padding: 12px 12px calc(12px + var(--safe-bottom, 0px));
 }
 
 .embedded-empty {
@@ -2135,7 +2272,7 @@ onBeforeUnmount(() => {
 }
 
 .center-action {
-  padding: 8px 10px 10px;
+  padding: 8px 10px calc(10px + var(--safe-bottom, 0px));
   border-top: 1px solid var(--gv-border);
   background: transparent;
 }
@@ -2637,6 +2774,53 @@ onBeforeUnmount(() => {
   }
   .nav-center {
     display: none;
+  }
+
+  .mobile-only {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .nav-btn.title {
+    display: none;
+  }
+
+  .nav-btn {
+    padding: 6px 10px;
+  }
+
+  .action-input-row {
+    grid-template-columns: 1fr 52px;
+    gap: 10px;
+  }
+
+  .action-input {
+    min-height: 48px;
+    max-height: 48px;
+    font-size: 16px;
+    padding: 12px 12px;
+  }
+
+  .send-btn {
+    height: 48px;
+  }
+
+  .center-story {
+    padding: 6px 6px 8px;
+  }
+
+  .center-story-inner {
+    padding: 10px 10px;
+    border-radius: 10px;
+  }
+
+  .center-action {
+    padding: 6px 6px calc(8px + var(--safe-bottom, 0px));
+  }
+
+  .action-input-row {
+    gap: 8px;
   }
 }
 

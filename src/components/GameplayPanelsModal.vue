@@ -22,12 +22,29 @@
               </div>
             </div>
 
-            <div class="actions">
-              <button class="btn" type="button" @click="emitAction('打坐修炼30分钟')">打坐30分钟</button>
-              <button class="btn" type="button" @click="emitAction('运转功法修炼60分钟')">修炼60分钟</button>
-              <button class="btn" type="button" @click="emitAction('闭关修炼1天')">闭关1天</button>
-              <button class="btn" type="button" @click="emitAction('查看自身状态与突破条件')">查看突破条件</button>
+            <div class="grid-2">
+              <div class="card">
+                <div class="card-title">声望</div>
+                <div class="fame-value">{{ fameText }}</div>
+              </div>
+
+              <div class="card">
+                <div class="card-title">天赋神通</div>
+                <div v-if="talents.length === 0" class="muted">暂无天赋</div>
+                <div v-for="t in talents" :key="t" class="pill">{{ t }}</div>
+              </div>
             </div>
+
+            <div class="card">
+              <div class="card-title">状态效果</div>
+              <div v-if="effects.length === 0" class="muted">暂无状态效果</div>
+              <div v-for="e in effects" :key="e" class="list-item">
+                <div class="li-main">
+                  <div class="li-title">{{ e }}</div>
+                </div>
+              </div>
+            </div>
+
           </div>
 
           <div v-else-if="activeTab === '背包物品'" class="panel-content">
@@ -282,6 +299,15 @@ const effects = computed(() => {
     .filter(Boolean)
 })
 
+const fameText = computed(() => {
+  const v = Number((gameState.玩家角色状态 as any)?.声望 ?? 0)
+  if (v >= 1000) return `名震八方（${v}）`
+  if (v >= 200) return `小有名气（${v}）`
+  if (v >= 50) return `略有耳闻（${v}）`
+  if (v > 0) return `默默无闻（${v}）`
+  return '籍籍无名'
+})
+
 const cultivationMethod = computed(() => (gameState as any).修炼功法 || (gameState as any).功法 || null)
 
 const skills = computed(() => {
@@ -460,7 +486,7 @@ onMounted(() => {
 
 .modal {
   width: min(980px, 100%);
-  max-height: min(760px, 92vh);
+  max-height: min(760px, calc(var(--app-vh, 100vh) * 0.92));
   border-radius: 14px;
   border: 1px solid var(--panel-border);
   background: var(--panel-bg);
@@ -473,7 +499,7 @@ onMounted(() => {
 
  .modal.modal-map {
   width: min(1520px, 100%);
-  max-height: 98vh;
+  max-height: calc(var(--app-vh, 100vh) * 0.98);
  }
 
  .body {
@@ -656,7 +682,7 @@ onMounted(() => {
 
 .modal2 {
   width: min(720px, 100%);
-  max-height: min(680px, 90vh);
+  max-height: min(680px, calc(var(--app-vh, 100vh) * 0.9));
   border-radius: 14px;
   border: 1px solid var(--panel-border);
   background: var(--panel-bg);

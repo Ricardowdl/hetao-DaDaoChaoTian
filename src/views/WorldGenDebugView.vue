@@ -246,7 +246,7 @@ async function run(mode: 'ai' | 'local') {
 
 <style scoped>
 .wrap {
-  min-height: 100vh;
+  min-height: var(--app-vh, 100vh);
   padding: 16px;
   background: rgba(2, 6, 23, 0.92);
   color: rgba(226, 232, 240, 0.92);

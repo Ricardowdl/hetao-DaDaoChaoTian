@@ -1,7 +1,7 @@
 <template>
-  <div class="rel-root light-surface">
+  <div class="rel-root light-surface" :class="{ 'mobile-detail-view': mobileShowDetail }">
     <div class="body">
-      <div class="sidebar">
+      <div class="sidebar" :class="{ 'mobile-hidden': mobileShowDetail }">
         <div class="sidebar-title">人物关系</div>
 
         <div class="search">
@@ -22,7 +22,7 @@
             type="button"
             class="person"
             :class="{ active: selectedKey === p.key }"
-            @click="selectedKey = p.key"
+            @click="selectPerson(p.key)"
           >
             <div class="person-avatar">{{ avatarText(p.name) }}</div>
 
@@ -42,7 +42,11 @@
         </div>
       </div>
 
-      <div class="main">
+      <div class="main" :class="{ 'mobile-visible': mobileShowDetail }">
+        <button v-if="mobileShowDetail" class="back-btn mobile-only" type="button" @click="backToList">
+          <span>←</span>
+          <span>返回列表</span>
+        </button>
         <div v-if="!selectedNpc" class="empty-main">
           <div class="empty-main-ico">👥</div>
           <div class="empty-main-title">选择一个人物查看详细信息</div>
@@ -138,6 +142,14 @@
                 </div>
                 <div v-else class="muted">未记录人格底线</div>
                 <div class="bottomline-warning">触犯人格底线将导致好感度断崖式下跌（-30 ~ -60），关系破裂且极难修复</div>
+              </div>
+
+              <div class="card danger">
+                <div class="card-title">危险操作</div>
+                <div class="muted">删除NPC会从人物关系中移除该人物记录。</div>
+                <div class="actions">
+                  <button class="btn btn-danger" type="button" @click="deleteNpc">删除该NPC</button>
+                </div>
               </div>
             </div>
 
@@ -237,13 +249,6 @@
               </div>
             </div>
 
-            <div class="card danger" style="margin-top: 12px">
-              <div class="card-title">危险操作</div>
-              <div class="muted">删除NPC会从人物关系中移除该人物记录。</div>
-              <div class="actions">
-                <button class="btn btn-danger" type="button" @click="deleteNpc">删除该NPC</button>
-              </div>
-            </div>
           </div>
         </div>
       </div>
@@ -262,6 +267,7 @@ const gameState = useGameStateStore()
 
 const searchText = ref('')
 const selectedKey = ref('')
+const mobileShowDetail = ref(false)
 type RelTabId = 'basic' | 'status' | 'memory' | 'inventory' | 'raw'
 type RelTab = { id: RelTabId; label: string; icon: string }
 
@@ -295,6 +301,15 @@ const people = computed<PersonRow[]>(() => {
   out.sort((a, b) => (b.follow ? 1 : 0) - (a.follow ? 1 : 0) || b.favor - a.favor || a.name.localeCompare(b.name))
   return out
 })
+
+function selectPerson(key: string) {
+  selectedKey.value = key
+  mobileShowDetail.value = true
+}
+
+function backToList() {
+  mobileShowDetail.value = false
+}
 
 const filteredPeople = computed(() => {
   const q = String(searchText.value || '').trim().toLowerCase()
@@ -477,19 +492,62 @@ function clampFavor(n: number) {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  height: 100%;
+  min-height: 0;
 }
 
 .body {
   display: grid;
   grid-template-columns: 320px 1fr;
   gap: 12px;
-  min-height: 520px;
+  flex: 1;
+  min-height: 0;
+  height: 100%;
 }
 
 @media (max-width: 860px) {
   .body {
     grid-template-columns: 1fr;
   }
+
+  .sidebar.mobile-hidden {
+    display: none;
+  }
+
+  .main {
+    display: none;
+  }
+
+  .main.mobile-visible {
+    display: flex;
+  }
+
+  .mobile-only {
+    display: flex !important;
+  }
+}
+
+.mobile-only {
+  display: none;
+}
+
+.back-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--panel-border);
+  background: var(--surface-3);
+  color: var(--text-1);
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+
+.back-btn:hover {
+  background: rgba(37, 99, 235, 0.12);
+  border-color: rgba(37, 99, 235, 0.35);
 }
 
 .sidebar {
@@ -500,6 +558,7 @@ function clampFavor(n: number) {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  min-height: 0;
 }
 
 .sidebar-title {
@@ -536,7 +595,9 @@ function clampFavor(n: number) {
   flex-direction: column;
   gap: 10px;
   overflow: auto;
-  max-height: 420px;
+  max-height: none;
+  flex: 1;
+  min-height: 0;
 }
 
 .person {
@@ -643,10 +704,15 @@ function clampFavor(n: number) {
   border-radius: 12px;
   background: rgba(15, 23, 42, 0.55);
   padding: 14px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .empty-main {
-  min-height: 520px;
+  min-height: 0;
+  flex: 1;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -789,6 +855,18 @@ function clampFavor(n: number) {
     border: none;
     border-radius: 0;
   }
+
+  .sidebar.mobile-hidden {
+    display: none !important;
+  }
+
+  .main {
+    display: none !important;
+  }
+
+  .main.mobile-visible {
+    display: flex !important;
+  }
  }
 
  .sidebar {
@@ -857,7 +935,8 @@ function clampFavor(n: number) {
  }
 
  .empty-main {
-  min-height: 520px;
+  min-height: 0;
+  flex: 1;
  }
 
  .empty-main-title {
@@ -947,6 +1026,9 @@ function clampFavor(n: number) {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
  }
 
  .detail-header {
@@ -1072,12 +1154,25 @@ function clampFavor(n: number) {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding-bottom: calc(10px + var(--safe-bottom, 0px));
  }
 
  .tab-panel {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  min-height: 0;
+ }
+
+ .danger-spacer {
+  height: clamp(180px, 35vh, 380px);
+ }
+
+ .danger-zone {
+  padding-top: 12px;
  }
 
  .quote {

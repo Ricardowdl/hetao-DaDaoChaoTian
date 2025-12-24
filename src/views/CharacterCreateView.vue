@@ -13,6 +13,32 @@
       <div class="header-icons">
         <button class="icon-tile" type="button" title="全屏" @click="uiStore.toggleFullscreen()">⛶</button>
         <button class="icon-tile" type="button" title="帮助" @click="showHelp">？</button>
+        <button class="icon-tile mobile-only" type="button" title="更多操作" @click="mobileMoreOpen = true">⋯</button>
+      </div>
+    </div>
+
+    <div class="mobile-stepper">
+      <div class="mobile-stepper-text">步骤 {{ currentStep }} / {{ steps.length }}：{{ currentStepInfo.label }}</div>
+      <div class="mobile-stepper-bar">
+        <div class="mobile-stepper-bar-inner" :style="{ width: stepProgress + '%' }" />
+      </div>
+    </div>
+
+    <div v-if="mobileMoreOpen" class="mobile-sheet-overlay" @click.self="mobileMoreOpen = false">
+      <div class="mobile-sheet" @click.stop>
+        <div class="mobile-sheet-head">
+          <div class="mobile-sheet-title">更多操作</div>
+          <button class="icon-tile" type="button" title="关闭" @click="mobileMoreOpen = false">✕</button>
+        </div>
+
+        <div class="mobile-sheet-body">
+          <button class="mobile-sheet-btn" type="button" @click="alertUnavailable(); mobileMoreOpen = false">暂不可用</button>
+          <button class="mobile-sheet-btn" type="button" @click="handleSavePreset(); mobileMoreOpen = false">存储预设</button>
+          <button class="mobile-sheet-btn" type="button" @click="handleLoadPreset(); mobileMoreOpen = false">加载预设</button>
+          <button class="mobile-sheet-btn" type="button" @click="handleClearCustom(); mobileMoreOpen = false">清除自定义</button>
+          <button class="mobile-sheet-btn" type="button" @click="uiStore.toggleFullscreen(); mobileMoreOpen = false">全屏</button>
+          <button class="mobile-sheet-btn" type="button" @click="showHelp(); mobileMoreOpen = false">帮助</button>
+        </div>
       </div>
     </div>
 
@@ -745,15 +771,20 @@
     </div>
 
     <div class="nav">
-      <button class="nav-btn" type="button" :disabled="creating" @click="handlePrevOrHome">{{ currentStep === 1 ? '返回主页' : '上一步' }}</button>
+      <button class="nav-btn nav-back" type="button" :disabled="creating" @click="handlePrevOrHome">
+        <span class="nav-btn-ico">‹</span>
+        <span class="nav-btn-text">{{ currentStep === 1 ? '返回主页' : '上一步' }}</span>
+      </button>
       <div class="nav-mid">{{ creating ? creatingText : `剩余天道点：${pointRemainingLabel}` }}</div>
-      <button class="nav-btn" type="button" :disabled="nextDisabled" @click="nextStep">{{ currentStep === 7 ? '开启仙途' : '下一步' }}</button>
+      <button class="nav-btn nav-next" type="button" :disabled="nextDisabled" @click="nextStep">
+        <span class="nav-btn-text">{{ currentStep === 7 ? '开启仙途' : '下一步' }}</span>
+      </button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { useCharacterStore } from '../stores/useCharacterStore'
@@ -796,6 +827,106 @@ const worldGenErrorStore = useWorldGenErrorStore()
 const creating = ref(false)
 const creatingText = ref('')
 
+const mobileMoreOpen = ref(false)
+
+const CREATION_SESSION_KEY = 'dad_creation_session_v1'
+
+type CreationSessionPayload = {
+  v: 1
+  updatedAt: string
+  currentStep: number
+  draft: CreationDraft
+  creating?: {
+    startedAt: string
+    stage: string
+    text?: string
+    input?: any
+    characterId?: string
+    slotKey?: string
+  } | null
+}
+
+function safeParseJson<T>(raw: string | null): T | null {
+  if (!raw) return null
+  try {
+    return JSON.parse(raw) as T
+  } catch {
+    return null
+  }
+}
+
+function buildSessionPayload(partial?: Partial<CreationSessionPayload>): CreationSessionPayload {
+  const base: CreationSessionPayload = {
+    v: 1,
+    updatedAt: new Date().toISOString(),
+    currentStep: currentStep.value,
+    draft: JSON.parse(JSON.stringify(draft)) as CreationDraft,
+    creating: null
+  }
+  return { ...base, ...(partial || {}) }
+}
+
+function saveCreationSessionNow(partial?: Partial<CreationSessionPayload>) {
+  const prev = loadCreationSession()
+  const hasCreating = partial ? Object.prototype.hasOwnProperty.call(partial, 'creating') : false
+  const payload = buildSessionPayload({
+    ...(partial || {}),
+    creating: hasCreating ? (partial as any).creating : prev?.creating || null
+  })
+  localStorage.setItem(CREATION_SESSION_KEY, JSON.stringify(payload))
+}
+
+function loadCreationSession(): CreationSessionPayload | null {
+  const parsed = safeParseJson<CreationSessionPayload>(localStorage.getItem(CREATION_SESSION_KEY))
+  if (!parsed || parsed.v !== 1) return null
+  if (!parsed.draft || typeof parsed.currentStep !== 'number') return null
+  return parsed
+}
+
+function clearCreationSession() {
+  localStorage.removeItem(CREATION_SESSION_KEY)
+}
+
+let saveTimer: number | null = null
+function scheduleSaveSession(partial?: Partial<CreationSessionPayload>) {
+  if (saveTimer != null) window.clearTimeout(saveTimer)
+  saveTimer = window.setTimeout(() => {
+    saveTimer = null
+    saveCreationSessionNow(partial)
+  }, 300)
+}
+
+let wakeLockSentinel: any = null
+async function requestWakeLock() {
+  try {
+    const anyNav: any = navigator as any
+    if (!anyNav?.wakeLock?.request) return
+    wakeLockSentinel = await anyNav.wakeLock.request('screen')
+  } catch {
+    void 0
+  }
+}
+
+async function requestPersistentStorage() {
+  try {
+    const anyNav: any = navigator as any
+    if (!anyNav?.storage?.persist) return
+    await anyNav.storage.persist()
+  } catch {
+    void 0
+  }
+}
+
+async function releaseWakeLock() {
+  try {
+    if (wakeLockSentinel?.release) await wakeLockSentinel.release()
+  } catch {
+    void 0
+  } finally {
+    wakeLockSentinel = null
+  }
+}
+
 const steps = [
   { number: 1, label: '诸天问道' },
   { number: 2, label: '仙缘初定' },
@@ -807,6 +938,13 @@ const steps = [
 ]
 
 const currentStep = ref(1)
+
+const currentStepInfo = computed(() => steps.find(s => s.number === currentStep.value) || steps[0])
+
+const stepProgress = computed(() => {
+  const total = steps.length || 1
+  return Math.min(100, Math.max(0, Math.round((currentStep.value / total) * 100)))
+})
 
 const baseWorlds = getDefaultWorlds()
 const baseAptitudes = getDefaultAptitudes()
@@ -835,6 +973,8 @@ const draft = reactive<CreationDraft>(createEmptyDraft('单机'))
 
 const showWorldSettings = ref(false)
 
+let hiddenWhileCreating = false
+
 function clampInt(n: any, min: number, max: number) {
   const v = Math.floor(Number(n))
   if (!Number.isFinite(v)) return min
@@ -858,6 +998,86 @@ function resetWorldCounts() {
   draft.世界规模 = JSON.parse(JSON.stringify(base))
   ensureWorldCounts()
 }
+
+const onVisibilityOrHide = () => {
+  try {
+    saveCreationSessionNow()
+  } catch {
+    void 0
+  }
+
+  try {
+    if (document.hidden && creating.value) {
+      hiddenWhileCreating = true
+      return
+    }
+
+    if (!document.hidden && hiddenWhileCreating) {
+      hiddenWhileCreating = false
+      const session = loadCreationSession()
+      if (!creating.value && session?.creating?.characterId && session?.creating?.slotKey) {
+        const ok = confirm('检测到你刚才切到后台/息屏。移动端浏览器可能会暂停/中断世界生成。\n\n是否从断点继续创建？')
+        if (ok) {
+          void resumeFromSession(session)
+        }
+      }
+    }
+  } catch {
+    void 0
+  }
+}
+
+onMounted(() => {
+  void requestPersistentStorage()
+
+  const session = loadCreationSession()
+  if (session?.draft) {
+    try {
+      Object.assign(draft, JSON.parse(JSON.stringify(session.draft)) as CreationDraft)
+      currentStep.value = Math.min(steps.length, Math.max(1, Math.round(session.currentStep || 1)))
+      ensureWorldCounts()
+    } catch {
+      void 0
+    }
+
+    if (session.creating?.stage && session.creating?.characterId && session.creating?.slotKey) {
+      try {
+        const ok = confirm(`检测到上次创建在【${session.creating.stage}】阶段中断，是否继续？\n\n你可以选择“确定”继续点击开启仙途重试，或“取消”仅恢复填写内容。`)
+        if (!ok) {
+          scheduleSaveSession({ creating: null })
+        }
+      } catch {
+        void 0
+      }
+    }
+  }
+
+  document.addEventListener('visibilitychange', onVisibilityOrHide)
+  window.addEventListener('pagehide', onVisibilityOrHide)
+})
+
+watch(
+  () => currentStep.value,
+  () => {
+    scheduleSaveSession()
+  }
+)
+
+watch(
+  draft,
+  () => {
+    scheduleSaveSession()
+  },
+  { deep: true }
+)
+
+onBeforeUnmount(() => {
+  if (saveTimer != null) window.clearTimeout(saveTimer)
+  saveTimer = null
+  document.removeEventListener('visibilitychange', onVisibilityOrHide)
+  window.removeEventListener('pagehide', onVisibilityOrHide)
+  void releaseWakeLock()
+})
 
 function randomWorldCounts() {
   ensureWorldCounts()
@@ -2394,6 +2614,160 @@ function canProceed(step: number) {
   return true
 }
 
+async function resumeFromSession(session: CreationSessionPayload) {
+  const ref = session.creating
+  if (!ref?.characterId || !ref?.slotKey) return
+
+  creating.value = true
+  creatingText.value = ref.text || '🔁 正在从断点恢复...'
+  let stage = ref.stage || '恢复创建'
+  let input: any = ref.input || null
+  let providerErrors: { provider: string; message: string; stack?: string }[] = []
+  const startedAt = ref.startedAt || new Date().toISOString()
+  let succeeded = false
+
+  const checkpoint = (nextStage: string, text?: string) => {
+    stage = nextStage
+    if (typeof text === 'string') creatingText.value = text
+    scheduleSaveSession({
+      creating: {
+        startedAt,
+        stage,
+        text: creatingText.value,
+        input: input || undefined,
+        characterId: ref.characterId,
+        slotKey: ref.slotKey
+      }
+    })
+  }
+
+  try {
+    await requestWakeLock()
+  } catch {
+    void 0
+  }
+
+  try {
+    checkpoint('恢复存档', '🔁 正在恢复存档...')
+    await characterStore.loadSaveAndApply(ref.characterId, ref.slotKey)
+
+    let worldInfo: any = (gameState as any).世界信息
+    if (!worldInfo && draft.世界 && draft.出身) {
+      checkpoint('世界生成', '🌍 世界生成：准备中...')
+      ensureWorldCounts()
+      const counts = draft.世界规模
+      input =
+        input ||
+        ({
+          worldName: draft.世界.名称,
+          worldEra: draft.世界.纪元,
+          worldBackground: draft.世界.描述,
+          characterName: (draft.道号 || '无名').trim() || '无名',
+          characterBackground: draft.出身.名称,
+          seed: Date.now(),
+          counts: {
+            continentCount: counts?.continentCount ?? 4,
+            factionCount: counts?.factionCount ?? 5,
+            locationCount: counts?.locationCount ?? 12,
+            secretRealmsCount: Math.min(counts?.locationCount ?? 12, counts?.secretRealmsCount ?? 5)
+          }
+        } as any)
+
+      worldInfo = await generateWorldInfo(input, {
+        provider: 'local',
+        onProgress: (t) => {
+          creatingText.value = t
+          checkpoint(stage)
+        }
+      })
+
+      checkpoint('写入世界信息')
+      ;(gameState as any).世界信息 = worldInfo
+      try {
+        await characterStore.saveCurrentGame(ref.characterId, ref.slotKey, { toast: false })
+      } catch {
+        void 0
+      }
+    }
+
+    checkpoint('角色初始化', '📜 天道正在为你书写命运之章...')
+    const aiBaseUrl = resolveAiBaseUrl({ preset: settingsStore.aiProviderPreset, customBaseUrl: settingsStore.customApiUrl })
+    const aiModel = (settingsStore.aiModel || '').trim()
+    if (aiBaseUrl && aiModel) {
+      const resp = await runCharacterInit({
+        saveData: gameState.toSaveData(),
+        preset: settingsStore.aiProviderPreset,
+        customApiUrl: settingsStore.customApiUrl,
+        apiKey: (settingsStore.customApiKey || '').trim(),
+        model: (settingsStore.aiModel || '').trim(),
+        temperature: settingsStore.aiTemperature,
+        maxOutputTokens: Math.max(4096, settingsStore.aiMaxOutputTokens),
+        allowPromptOverrides: settingsStore.useImportedPromptOverrides,
+        initMode: settingsStore.initMode,
+        stream: settingsStore.aiStreaming,
+        onProgress: (text) => {
+          creatingText.value = `📜 天道正在为你书写命运之章...\n\n${text.slice(-160)}`
+        }
+      })
+
+      gameState.applyCommands(resp.tavern_commands)
+      gameState.appendNarrative({ role: 'assistant', text: resp.text, createdAt: new Date().toISOString(), stateChanges: resp.tavern_commands })
+      gameState.addToShortTermMemory((resp as any).mid_term_memory ? (resp as any).mid_term_memory : resp.text)
+    }
+
+    checkpoint('选择初始位置')
+    const pos: any = (gameState as any)?.玩家角色状态?.位置
+    const hasX = typeof pos?.x === 'number' && Number.isFinite(pos.x)
+    const hasY = typeof pos?.y === 'number' && Number.isFinite(pos.y)
+    if (!hasX || !hasY) {
+      const wi = (gameState as any).世界信息 || worldInfo
+      if (wi) gameState.玩家角色状态.位置 = pickInitialLocation(wi)
+    }
+
+    checkpoint('保存存档', '💾 写入存档...')
+    await characterStore.saveCurrentGame(ref.characterId, ref.slotKey)
+
+    checkpoint('进入游戏')
+    clearCreationSession()
+    succeeded = true
+    await router.push({ name: 'GameView' })
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    console.error('[CharacterCreate] resume failed:', { stage, error: e })
+    try {
+      saveCreationSessionNow({
+        creating: {
+          startedAt,
+          stage,
+          text: creatingText.value,
+          input: input || undefined,
+          characterId: ref.characterId,
+          slotKey: ref.slotKey
+        }
+      })
+    } catch {
+      void 0
+    }
+    try {
+      worldGenErrorStore.setError({
+        stage,
+        message: msg,
+        stack: e instanceof Error ? e.stack : undefined,
+        input: input || undefined,
+        providerErrors: providerErrors?.length ? providerErrors : undefined
+      })
+      await router.push({ name: 'WorldGenError' })
+    } catch {
+      alert(`创建失败[${stage}]：${msg}`)
+    }
+  } finally {
+    creating.value = false
+    creatingText.value = ''
+    if (!succeeded) scheduleSaveSession({ creating: null })
+    void releaseWakeLock()
+  }
+}
+
 async function startGame() {
   if (creating.value) return
   if (!draft.世界 || !draft.天资 || !draft.出身 || !draft.灵根) {
@@ -2409,17 +2783,69 @@ async function startGame() {
     return
   }
 
+  const existingSession = loadCreationSession()
+  if (existingSession?.creating?.characterId && existingSession?.creating?.slotKey && existingSession?.creating?.stage) {
+    const canResume = [
+      '初始化存档',
+      '世界生成',
+      '写入世界信息',
+      '角色初始化',
+      '选择初始位置',
+      '保存存档',
+      '进入游戏'
+    ].includes(existingSession.creating.stage)
+    if (canResume) {
+      const ok = confirm(
+        `检测到上次创建在【${existingSession.creating.stage}】阶段中断，是否从断点继续？\n\n选择“取消”将重新开始创建流程（填写内容仍会保留）。`
+      )
+      if (ok) {
+        await resumeFromSession(existingSession)
+        return
+      }
+      scheduleSaveSession({ creating: null })
+    }
+  }
+
   creating.value = true
   creatingText.value = '⚙️ 初始化存档...'
   let stage = '初始化存档'
   let input: any = null
   let providerErrors: { provider: string; message: string; stack?: string }[] = []
+  const startedAt = new Date().toISOString()
+  let succeeded = false
+
+  let activeCharId: string | null = null
+  const slotKey = '存档1'
+
+  const checkpoint = (nextStage: string, text?: string) => {
+    stage = nextStage
+    if (typeof text === 'string') creatingText.value = text
+    scheduleSaveSession({
+      creating: {
+        startedAt,
+        stage,
+        text: creatingText.value,
+        input: input || undefined,
+        characterId: activeCharId || undefined,
+        slotKey
+      }
+    })
+  }
+
+  try {
+    await requestWakeLock()
+  } catch {
+    void 0
+  }
+
+  checkpoint(stage, creatingText.value)
   try {
     const name = (draft.道号 || '无名').trim() || '无名'
     const charId = characterStore.createCharacter(name, '单机')
-    characterStore.setActive(charId, '存档1')
+    activeCharId = charId
+    characterStore.setActive(charId, slotKey)
 
-    stage = '初始化存档'
+    checkpoint('初始化存档', '⚙️ 初始化存档...')
     gameState.fromSaveData({
       游戏时间: { 年: 1000, 月: 1, 日: 1, 小时: 8, 分钟: 0 },
       玩家角色状态: {
@@ -2447,8 +2873,13 @@ async function startGame() {
       人物关系: {}
     } as any)
 
-    stage = '世界生成'
-    creatingText.value = '🌍 世界生成：准备中...'
+    try {
+      await characterStore.saveCurrentGame(charId, slotKey, { toast: false })
+    } catch {
+      void 0
+    }
+
+    checkpoint('世界生成', '🌍 世界生成：准备中...')
 
     ensureWorldCounts()
     const counts = draft.世界规模
@@ -2470,6 +2901,16 @@ async function startGame() {
 
     const onProgress = (t: string) => {
       creatingText.value = t
+      scheduleSaveSession({
+        creating: {
+          startedAt,
+          stage,
+          text: t,
+          input: input || undefined,
+          characterId: activeCharId || undefined,
+          slotKey
+        }
+      })
     }
 
     let worldInfo: any
@@ -2521,11 +2962,16 @@ async function startGame() {
       worldInfo = await generateWorldInfo(input, { provider: 'local', onProgress })
     }
 
-    stage = '写入世界信息'
+    checkpoint('写入世界信息')
     ;(gameState as any).世界信息 = worldInfo
 
-    stage = '角色初始化'
-    creatingText.value = '📜 天道正在为你书写命运之章...'
+    try {
+      await characterStore.saveCurrentGame(charId, '存档1', { toast: false })
+    } catch {
+      void 0
+    }
+
+    checkpoint('角色初始化', '📜 天道正在为你书写命运之章...')
 
     if (aiBaseUrl && aiModel) {
       const resp = await runCharacterInit({
@@ -2549,7 +2995,7 @@ async function startGame() {
       gameState.addToShortTermMemory((resp as any).mid_term_memory ? (resp as any).mid_term_memory : resp.text)
     }
 
-    stage = '选择初始位置'
+    checkpoint('选择初始位置')
     const pos: any = (gameState as any)?.玩家角色状态?.位置
     const hasX = typeof pos?.x === 'number' && Number.isFinite(pos.x)
     const hasY = typeof pos?.y === 'number' && Number.isFinite(pos.y)
@@ -2557,15 +3003,30 @@ async function startGame() {
       gameState.玩家角色状态.位置 = pickInitialLocation(worldInfo)
     }
 
-    stage = '保存存档'
-    creatingText.value = '💾 写入存档...'
-    await characterStore.saveCurrentGame(charId, '存档1')
+    checkpoint('保存存档', '💾 写入存档...')
+    await characterStore.saveCurrentGame(charId, slotKey)
 
-    stage = '进入游戏'
+    checkpoint('进入游戏')
+    clearCreationSession()
+    succeeded = true
     await router.push({ name: 'GameView' })
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
     console.error('[CharacterCreate] startGame failed:', { stage, error: e })
+    try {
+      saveCreationSessionNow({
+        creating: {
+          startedAt,
+          stage,
+          text: creatingText.value,
+          input: input || undefined,
+          characterId: activeCharId || undefined,
+          slotKey
+        }
+      })
+    } catch {
+      void 0
+    }
     try {
       worldGenErrorStore.setError({
         stage,
@@ -2581,6 +3042,8 @@ async function startGame() {
   } finally {
     creating.value = false
     creatingText.value = ''
+    if (!succeeded) scheduleSaveSession({ creating: null })
+    void releaseWakeLock()
   }
 }
 
@@ -2628,6 +3091,7 @@ function handleLoadPreset() {
 function handleClearCustom() {
   const ok = confirm('确定要清除当前自定义并重置为默认吗？')
   if (!ok) return
+  clearCreationSession()
   const fresh = createEmptyDraft('单机')
   Object.assign(draft, JSON.parse(JSON.stringify(fresh)) as CreationDraft)
   ensureWorldCounts()
@@ -2638,12 +3102,12 @@ function handleClearCustom() {
 
 <style scoped>
 .creation-container {
-  min-height: 100vh;
-  padding: 22px;
+  height: var(--app-vh, 100vh);
+  padding: calc(22px + var(--safe-top, 0px)) 22px 22px;
   display: grid;
   grid-template-rows: auto auto 1fr auto;
   gap: 16px;
-  align-items: start;
+  align-items: stretch;
   position: relative;
   overflow: hidden;
 }
@@ -2664,10 +3128,18 @@ function handleClearCustom() {
 
 .header,
 .step-row,
-.main-panel,
 .nav {
   width: min(1180px, 100%);
   justify-self: center;
+  align-self: start;
+  position: relative;
+  z-index: 1;
+}
+
+.main-panel {
+  width: min(1180px, 100%);
+  justify-self: center;
+  align-self: stretch;
   position: relative;
   z-index: 1;
 }
@@ -2715,6 +3187,102 @@ function handleClearCustom() {
   justify-self: end;
   display: flex;
   gap: 10px;
+}
+
+.mobile-only {
+  display: none;
+}
+
+.mobile-stepper {
+  display: none;
+  width: min(1180px, 100%);
+  justify-self: center;
+  position: relative;
+  z-index: 1;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(15, 23, 42, 0.28);
+  backdrop-filter: blur(22px);
+  padding: 12px 14px;
+}
+
+.mobile-stepper-text {
+  text-align: center;
+  font-size: 12px;
+  color: rgba(191, 219, 254, 0.92);
+  line-height: 1.4;
+  font-weight: 650;
+}
+
+.mobile-stepper-bar {
+  margin-top: 10px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.22);
+  overflow: hidden;
+}
+
+.mobile-stepper-bar-inner {
+  height: 100%;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.85);
+}
+
+.mobile-sheet-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3200;
+  background: rgba(2, 6, 23, 0.55);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 12px 12px calc(12px + var(--safe-bottom, 0px));
+}
+
+.mobile-sheet {
+  width: min(520px, 100%);
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(15, 23, 42, 0.92);
+  box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+}
+
+.mobile-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.mobile-sheet-title {
+  font-weight: 750;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.mobile-sheet-body {
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.mobile-sheet-btn {
+  appearance: none;
+  border-radius: 14px;
+  padding: 12px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.18);
+  color: rgba(255, 255, 255, 0.9);
+  cursor: pointer;
+  text-align: left;
+  font-weight: 650;
+}
+
+.mobile-sheet-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .icon-tile {
@@ -2802,19 +3370,25 @@ function handleClearCustom() {
   background: rgba(15, 23, 42, 0.44);
   backdrop-filter: blur(26px);
   padding: 18px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   box-shadow:
     0 30px 90px -42px rgba(0, 0, 0, 0.72),
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .main-content {
-  min-height: 520px;
+  flex: 1;
+  min-height: 0;
 }
 
 .main-content {
   display: grid;
   grid-template-columns: 320px 1fr;
+  grid-template-rows: 1fr;
   gap: 16px;
+  min-height: 0;
 }
 
 .main-content.preview-only {
@@ -2827,8 +3401,12 @@ function handleClearCustom() {
   background: rgba(2, 6, 23, 0.22);
   backdrop-filter: blur(18px);
   padding: 12px;
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 10px;
+  min-height: 0;
+  overflow: hidden;
+  -webkit-overflow-scrolling: touch;
 }
 
 .world-sidebar {
@@ -2895,7 +3473,7 @@ function handleClearCustom() {
 
 .modal-card {
   width: min(720px, calc(100vw - 32px));
-  max-height: calc(100vh - 64px);
+  max-height: calc(var(--app-vh, 100vh) - 64px);
   overflow: auto;
   border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -3301,7 +3879,8 @@ function handleClearCustom() {
   display: grid;
   gap: 8px;
   align-content: start;
-  max-height: 520px;
+  flex: 1;
+  min-height: 0;
   overflow: auto;
   padding-right: 2px;
 }
@@ -3441,6 +4020,9 @@ function handleClearCustom() {
   background: rgba(2, 6, 23, 0.2);
   backdrop-filter: blur(18px);
   padding: 18px;
+  min-height: 0;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .detail-inner {
@@ -3448,6 +4030,7 @@ function handleClearCustom() {
   display: grid;
   gap: 12px;
   align-content: start;
+  min-height: 0;
 }
 
 .detail-inner.center {
@@ -3737,10 +4320,11 @@ function handleClearCustom() {
   gap: 12px;
   align-items: center;
   padding: 12px 16px;
-  border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(15, 23, 42, 0.26);
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(15, 23, 42, 0.38);
   backdrop-filter: blur(22px);
+  padding-bottom: calc(12px + var(--safe-bottom, 0px));
 }
 
 .nav-btn {
@@ -3767,6 +4351,16 @@ function handleClearCustom() {
   color: rgba(255, 255, 255, 0.7);
 }
 
+.nav-btn-ico {
+  display: none;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.nav-btn-text {
+  line-height: 1;
+}
+
 @media (max-width: 980px) {
   .header {
     grid-template-columns: 1fr;
@@ -3781,6 +4375,10 @@ function handleClearCustom() {
     grid-template-columns: 1fr;
   }
 
+  .main-content:not(.preview-only) {
+    grid-template-rows: auto 1fr;
+  }
+
   .meta-grid {
     grid-template-columns: 1fr;
   }
@@ -3791,6 +4389,129 @@ function handleClearCustom() {
 
   .attribute-slider {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .creation-container {
+    padding: calc(16px + var(--safe-top, 0px)) 12px calc(16px + var(--safe-bottom, 0px) + 78px);
+    gap: 12px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .header {
+    grid-template-columns: 1fr auto;
+    justify-items: stretch;
+    align-items: center;
+  }
+
+  .header-actions {
+    display: none;
+  }
+
+  .header-icons .icon-tile:not(.mobile-only) {
+    display: none;
+  }
+
+  .mobile-only {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .step-row {
+    display: none;
+  }
+
+  .mobile-stepper {
+    display: block;
+  }
+
+  .main-panel {
+    padding: 12px;
+    border-radius: 14px;
+  }
+
+  .sidebar {
+    padding: 12px;
+    border-radius: 14px;
+    max-height: calc(var(--app-vh, 100vh) * 0.34);
+  }
+
+  .tab-row {
+    width: 100%;
+  }
+
+  .tab-row .tab-button {
+    flex: 1;
+  }
+
+  .detail {
+    padding: 12px;
+    border-radius: 14px;
+  }
+
+  .option-list {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 10px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 8px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .option-item {
+    flex: 0 0 auto;
+    border-radius: 999px;
+    padding: 10px 14px;
+    min-height: 44px;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .world-list .option-item {
+    min-height: 44px;
+    border-radius: 999px;
+    padding: 10px 14px;
+  }
+
+  .nav {
+    position: fixed;
+    left: calc(12px + var(--safe-left, 0px));
+    right: calc(12px + var(--safe-right, 0px));
+    bottom: calc(12px + var(--safe-bottom, 0px));
+    width: auto;
+    z-index: 2500;
+    border-radius: 18px;
+  }
+
+  .nav-btn {
+    height: 48px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  .nav-btn-ico {
+    display: inline;
+  }
+
+  .nav-back .nav-btn-text {
+    display: none;
+  }
+
+  .nav-mid {
+    font-size: 12px;
+  }
+
+  .nav-next {
+    background: rgba(37, 99, 235, 0.48);
+    border-color: rgba(59, 130, 246, 0.6);
   }
 }
 </style>

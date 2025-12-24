@@ -605,7 +605,7 @@ function formatBytes(bytes: number) {
 
 .settings-modal {
   width: min(1100px, 100%);
-  height: min(900px, 100vh);
+  height: min(900px, var(--app-vh, 100vh));
   border-radius: 0;
   border: 0;
   background: transparent;

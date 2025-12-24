@@ -10,7 +10,7 @@ import PromptManagementPanel from '../components/PromptManagementPanel.vue'
 
 <style scoped>
 .pm-route {
-  min-height: 100vh;
+  min-height: var(--app-vh, 100vh);
   padding: 16px;
   background: rgba(15, 23, 42, 0.06);
 }

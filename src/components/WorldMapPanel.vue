@@ -68,6 +68,9 @@
 
         <div class="map-controls">
           <button class="control-btn" type="button" @click="locatePlayer" title="定位到当前位置">🎯</button>
+          <button class="control-btn" type="button" @click="zoomIn" title="放大">＋</button>
+          <button class="control-btn" type="button" @click="zoomOut" title="缩小">－</button>
+          <button class="control-btn" type="button" @click="resetView" title="重置视图">↺</button>
           <button class="control-btn" type="button" @click="toggleFullscreen" title="全屏切换">⛶</button>
           <button class="control-btn" type="button" @click="reloadMarkers" title="重新加载地图">⟳</button>
           <button class="control-status" type="button" disabled>{{ statusText }}</button>
@@ -150,8 +153,8 @@ const noticeText = ref('')
 const WORLD_COORD_MAX = 10000
 const WORLD_PX = 1600
 
-const MIN_SCALE = 0.6
-const MAX_SCALE = 2.6
+const HARD_MIN_SCALE = 0.18
+const HARD_MAX_SCALE = 3.2
 const ZOOM_SENSITIVITY = 0.001
 
 const mapWrapperRef = ref<HTMLElement | null>(null)
@@ -169,6 +172,18 @@ const panPointerId = ref<number | null>(null)
 const panStart = ref({ x: 0, y: 0, panX: 0, panY: 0 })
 
 const panOffset = ref({ x: 0, y: 0 })
+
+const activePointers = new Map<number, { x: number; y: number }>()
+let pinchStart: null | {
+  dist: number
+  scale: number
+  panX: number
+  panY: number
+  centerX: number
+  centerY: number
+  worldX: number
+  worldY: number
+} = null
 
 const legendOpen = ref(false)
 
@@ -238,8 +253,34 @@ const playerY = computed(() => {
   return Number.isFinite(v) ? Math.round(Number(v)) : 0
 })
 
-function clamp(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, n))
+function clamp(v: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, v))
+}
+
+function interactionEl() {
+  return mapWrapperRef.value
+}
+
+function viewportEl() {
+  return canvasRef.value || mapWrapperRef.value
+}
+
+function fitScaleForViewport() {
+  const viewport = viewportEl()
+  const stage = stageRef.value
+  if (!viewport || !stage) return 1
+
+  const stageLeft = stage.offsetLeft
+  const stageTop = stage.offsetTop
+  const availW = Math.max(80, viewport.clientWidth - stageLeft * 2)
+  const availH = Math.max(80, viewport.clientHeight - stageTop * 2)
+  const fit = Math.min(availW / WORLD_PX, availH / WORLD_PX)
+  return clamp(fit, HARD_MIN_SCALE, HARD_MAX_SCALE)
+}
+
+function minScaleForViewport() {
+  const fit = fitScaleForViewport()
+  return Math.max(HARD_MIN_SCALE, Math.min(0.6, fit))
 }
 
 function clampWorldCoord(n: number) {
@@ -278,6 +319,66 @@ function pickWorldCoordinates(raw: any, idx: number): { x: number; y: number } {
 
   void idx
   return { x, y }
+}
+
+function zoomAt(px: number, py: number, nextScale: number, baseScale: number) {
+  const wrap = viewportEl()
+  const stage = stageRef.value
+  if (!wrap || !stage) return
+
+  const stageLeft = stage.offsetLeft
+  const stageTop = stage.offsetTop
+
+  const xInStage = px - stageLeft - panOffset.value.x
+  const yInStage = py - stageTop - panOffset.value.y
+  const worldX = xInStage / Math.max(0.0001, baseScale)
+  const worldY = yInStage / Math.max(0.0001, baseScale)
+
+  scale.value = nextScale
+
+  panOffset.value = clampPan({
+    x: px - stageLeft - worldX * nextScale,
+    y: py - stageTop - worldY * nextScale
+  })
+}
+
+function zoomAtCenter(factor: number) {
+  const wrap = viewportEl()
+  if (!wrap) return
+  const s0 = scale.value || 1
+  const s1 = clamp(s0 * factor, minScaleForViewport(), HARD_MAX_SCALE)
+  if (s1 === s0) return
+  zoomAt(wrap.clientWidth / 2, wrap.clientHeight / 2, s1, s0)
+}
+
+function zoomIn() {
+  zoomAtCenter(1.15)
+}
+
+function zoomOut() {
+  zoomAtCenter(1 / 1.15)
+}
+
+function resetView() {
+  fitToScreen()
+}
+
+function fitToScreen() {
+  const viewport = viewportEl()
+  const stage = stageRef.value
+  if (!viewport || !stage) return
+
+  const stageLeft = stage.offsetLeft
+  const stageTop = stage.offsetTop
+  const s = fitScaleForViewport()
+  scale.value = s
+
+  const stageW = WORLD_PX * s
+  const stageH = WORLD_PX * s
+  panOffset.value = clampPan({
+    x: (viewport.clientWidth - stageW) / 2 - stageLeft,
+    y: (viewport.clientHeight - stageH) / 2 - stageTop
+  })
 }
 
 const coordAxisScale = computed(() => {
@@ -786,7 +887,7 @@ async function copyContinent() {
 }
 
 function centerToCoord(x: number, y: number) {
-  const wrap = mapWrapperRef.value
+  const wrap = viewportEl()
   const stage = stageRef.value
   if (!wrap) return
 
@@ -805,7 +906,7 @@ function centerToCoord(x: number, y: number) {
 }
 
 function clampPan(p: { x: number; y: number }) {
-  const wrap = mapWrapperRef.value
+  const wrap = viewportEl()
   const stage = stageRef.value
   if (!wrap || !stage) return p
 
@@ -835,7 +936,7 @@ function clampPan(p: { x: number; y: number }) {
 }
 
 function handleWheelZoom(e: WheelEvent) {
-  const wrap = mapWrapperRef.value
+  const wrap = viewportEl()
   const stage = stageRef.value
   if (!wrap || !stage) return
 
@@ -846,30 +947,12 @@ function handleWheelZoom(e: WheelEvent) {
   const px = e.clientX - rect.left
   const py = e.clientY - rect.top
 
-  const stageLeft = stage.offsetLeft
-  const stageTop = stage.offsetTop
   const s0 = scale.value || 1
 
-  const xInStage = px - stageLeft - panOffset.value.x
-  const yInStage = py - stageTop - panOffset.value.y
-  const worldX = xInStage / s0
-  const worldY = yInStage / s0
-
   const factor = Math.exp(-e.deltaY * ZOOM_SENSITIVITY)
-  const s1 = clamp(s0 * factor, MIN_SCALE, MAX_SCALE)
+  const s1 = clamp(s0 * factor, minScaleForViewport(), HARD_MAX_SCALE)
   if (s1 === s0) return
-  scale.value = s1
-
-  nextTick(() => {
-    const nextXInStage = worldX * s1
-    const nextYInStage = worldY * s1
-
-    const next = clampPan({
-      x: px - stageLeft - nextXInStage,
-      y: py - stageTop - nextYInStage
-    })
-    panOffset.value = next
-  })
+  zoomAt(px, py, s1, s0)
 }
 
 function shouldIgnorePanTarget(el: EventTarget | null) {
@@ -879,10 +962,48 @@ function shouldIgnorePanTarget(el: EventTarget | null) {
 }
 
 function handlePointerDown(e: PointerEvent) {
-  const wrap = mapWrapperRef.value
-  if (!wrap) return
-  if (e.button !== 0) return
+  const wrap = interactionEl()
+  const viewport = viewportEl()
+  if (!wrap || !viewport) return
+  if (e.pointerType === 'mouse' && e.button !== 0) return
   if (shouldIgnorePanTarget(e.target)) return
+
+  activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+
+  if (activePointers.size >= 2) {
+    const pts = Array.from(activePointers.values()).slice(0, 2)
+    const dx = pts[1].x - pts[0].x
+    const dy = pts[1].y - pts[0].y
+    const dist = Math.hypot(dx, dy) || 1
+    const centerX = (pts[0].x + pts[1].x) / 2
+    const centerY = (pts[0].y + pts[1].y) / 2
+
+    const rect = viewport.getBoundingClientRect()
+    const px = centerX - rect.left
+    const py = centerY - rect.top
+    const stage = stageRef.value
+    const stageLeft = stage ? stage.offsetLeft : 0
+    const stageTop = stage ? stage.offsetTop : 0
+    const s0 = scale.value || 1
+    const worldX = (px - stageLeft - panOffset.value.x) / Math.max(0.0001, s0)
+    const worldY = (py - stageTop - panOffset.value.y) / Math.max(0.0001, s0)
+
+    pinchStart = {
+      dist,
+      scale: s0,
+      panX: panOffset.value.x,
+      panY: panOffset.value.y,
+      centerX: px,
+      centerY: py,
+      worldX,
+      worldY
+    }
+    isPanning.value = false
+    panPointerId.value = null
+    wrap.setPointerCapture?.(e.pointerId)
+    e.preventDefault()
+    return
+  }
 
   isPanning.value = true
   panPointerId.value = e.pointerId
@@ -892,8 +1013,38 @@ function handlePointerDown(e: PointerEvent) {
 }
 
 function handlePointerMove(e: PointerEvent) {
-  const wrap = mapWrapperRef.value
-  if (!wrap) return
+  const viewport = viewportEl()
+  if (!viewport) return
+
+  if (activePointers.has(e.pointerId)) {
+    activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+  }
+
+  if (pinchStart && activePointers.size >= 2) {
+    const pts = Array.from(activePointers.values()).slice(0, 2)
+    const dx = pts[1].x - pts[0].x
+    const dy = pts[1].y - pts[0].y
+    const dist = Math.hypot(dx, dy) || 1
+    const centerX = (pts[0].x + pts[1].x) / 2
+    const centerY = (pts[0].y + pts[1].y) / 2
+    const rect = viewport.getBoundingClientRect()
+    const px = centerX - rect.left
+    const py = centerY - rect.top
+
+    const s1 = clamp(pinchStart.scale * (dist / Math.max(1, pinchStart.dist)), minScaleForViewport(), HARD_MAX_SCALE)
+    const stage = stageRef.value
+    const stageLeft = stage ? stage.offsetLeft : 0
+    const stageTop = stage ? stage.offsetTop : 0
+
+    scale.value = s1
+    panOffset.value = clampPan({
+      x: px - stageLeft - pinchStart.worldX * s1,
+      y: py - stageTop - pinchStart.worldY * s1
+    })
+    e.preventDefault()
+    return
+  }
+
   if (!isPanning.value) return
   if (panPointerId.value !== null && e.pointerId !== panPointerId.value) return
 
@@ -905,7 +1056,18 @@ function handlePointerMove(e: PointerEvent) {
 }
 
 function endPan(e?: PointerEvent) {
-  const wrap = mapWrapperRef.value
+  const wrap = interactionEl()
+
+  if (e) {
+    activePointers.delete(e.pointerId)
+  } else {
+    activePointers.clear()
+  }
+
+  if (activePointers.size < 2) pinchStart = null
+
+  if (e && panPointerId.value !== null && e.pointerId !== panPointerId.value) return
+
   if (wrap && panPointerId.value !== null) {
     try {
       wrap.releasePointerCapture?.(panPointerId.value)
@@ -913,9 +1075,11 @@ function endPan(e?: PointerEvent) {
       void 0
     }
   }
-  if (e && panPointerId.value !== null && e.pointerId !== panPointerId.value) return
-  isPanning.value = false
-  panPointerId.value = null
+
+  if (!pinchStart) {
+    isPanning.value = false
+    panPointerId.value = null
+  }
 }
 
 function locatePlayer() {
@@ -958,9 +1122,11 @@ watch(
 
 watch(
   worldInfo,
-  () => {
+  async () => {
     closePopup()
     statusText.value = worldInfo.value ? `已加载 ${mappedLocations.value.length} 个地点` : '未找到世界数据'
+    await nextTick()
+    fitToScreen()
   },
   { immediate: true }
 )
@@ -969,6 +1135,8 @@ onMounted(async () => {
   document.addEventListener('fullscreenchange', handleFullscreenChange)
   await nextTick()
   statusText.value = worldInfo.value ? `已加载 ${mappedLocations.value.length} 个地点` : '未找到世界数据'
+
+  fitToScreen()
 
   const wrap = mapWrapperRef.value
   if (wrap) {
@@ -1021,6 +1189,8 @@ onBeforeUnmount(() => {
   border-radius: 12px;
   overflow: hidden;
   touch-action: none;
+  display: flex;
+  flex-direction: column;
   height: 100%;
   min-height: 0;
   cursor: grab;
@@ -1051,11 +1221,17 @@ onBeforeUnmount(() => {
   color: rgba(148, 163, 184, 0.95);
   font-size: 12px;
   line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .map-canvas {
   position: relative;
   padding: 14px;
+  flex: 1;
+  min-height: 0;
 }
 
 .world {
@@ -1278,7 +1454,7 @@ onBeforeUnmount(() => {
 
 .popup-content {
   padding: 10px 12px;
-  max-height: min(360px, calc(100vh - 240px));
+  max-height: min(360px, calc(var(--app-vh, 100vh) - 240px));
   overflow: auto;
 }
 

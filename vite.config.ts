@@ -20,8 +20,13 @@ export default defineConfig(({ mode }) => ({
     }
   },
   server: {
+    host: true,
     port: 5173,
     strictPort: true,
+    headers: {
+      'Cache-Control': 'no-store',
+      Pragma: 'no-cache'
+    },
     proxy: {
       '/official': {
         target: 'http://43.160.245.153',

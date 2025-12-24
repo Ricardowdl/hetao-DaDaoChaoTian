@@ -6,7 +6,7 @@
       <div class="selection-content">
         <div class="header-container">
           <div class="title-row">
-            <h1 class="main-title">大 道 朝 天</h1>
+            <h1 class="main-title">纵 横 诸 天</h1>
             <span class="version-tag">V0.2 内测</span>
           </div>
           <div class="sub-title">朝游北海暮苍梧，醉卧云霞食朝露</div>
@@ -121,7 +121,7 @@ function loadExistingCharacters() {
 }
 
 function showHelp() {
-  alert('大道朝天 v0.2 内测\n\n- 单机闭关：本地存档，离线可玩\n- 初入仙途：创建新角色\n- 续前世因缘：管理/继续已有存档')
+  alert('纵横诸天 v0.2 内测\n\n- 单机闭关：本地存档，离线可玩\n- 初入仙途：创建新角色\n- 续前世因缘：管理/继续已有存档')
 }
 
 function handleAuthBadge() {
@@ -134,7 +134,7 @@ function handleAuthBadge() {
 <style scoped>
 .mode-selection-container {
   width: 100%;
-  height: 100vh;
+  height: var(--app-vh, 100vh);
   position: relative;
   overflow: hidden;
 }
@@ -155,7 +155,9 @@ function handleAuthBadge() {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 18px;
+  padding: calc(18px + var(--safe-top, 0px)) 18px calc(18px + var(--safe-bottom, 0px));
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .selection-content {
@@ -396,25 +398,25 @@ function handleAuthBadge() {
 }
 
 .top-right {
-  position: absolute;
-  top: 14px;
-  right: 14px;
+  position: fixed;
+  top: calc(14px + var(--safe-top, 0px));
+  right: calc(14px + var(--safe-right, 0px));
   display: flex;
   gap: 10px;
   z-index: 10;
 }
 
 .bottom-left {
-  position: absolute;
-  left: 14px;
-  bottom: 14px;
+  position: fixed;
+  left: calc(14px + var(--safe-left, 0px));
+  bottom: calc(14px + var(--safe-bottom, 0px));
   z-index: 10;
 }
 
 .bottom-right {
-  position: absolute;
-  right: 14px;
-  bottom: 14px;
+  position: fixed;
+  right: calc(14px + var(--safe-right, 0px));
+  bottom: calc(14px + var(--safe-bottom, 0px));
   z-index: 10;
 }
 
@@ -477,6 +479,11 @@ function handleAuthBadge() {
     gap: 1.5rem;
   }
 
+  .selection-stage {
+    align-items: flex-start;
+    justify-content: flex-start;
+  }
+
   .gate-container {
     align-items: center;
   }
@@ -493,13 +500,24 @@ function handleAuthBadge() {
 }
 
 @media (max-width: 480px) {
+  .selection-stage {
+    padding: calc(14px + var(--safe-top, 0px)) 12px calc(18px + var(--safe-bottom, 0px));
+  }
+
+  .selection-content {
+    padding: 1.6rem 1.1rem;
+    gap: 1.2rem;
+  }
+
   .main-title {
     font-size: 1.65rem;
     letter-spacing: 0.18em;
   }
 
-  .footer-actions {
-    flex-direction: column;
+  .action-btn {
+    width: 100%;
+    min-width: 0;
+    max-width: 420px;
   }
 }
 

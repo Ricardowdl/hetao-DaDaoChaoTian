@@ -300,7 +300,7 @@ async function exportCharacter(characterId: string) {
     const text = await characterStore.exportCharacterFile(characterId)
     const name = String((characterStore.角色列表[characterId] as any)?.角色名 || '未命名角色')
     const date = new Date().toISOString().split('T')[0]
-    downloadJson(`大道朝天-角色-${name}-${date}.json`, text)
+    downloadJson(`纵横诸天-角色-${name}-${date}.json`, text)
   } catch (e) {
     await showAlert('导出失败', e instanceof Error ? e.message : '未知错误')
   }
@@ -310,7 +310,7 @@ async function exportSave(characterId: string, slotKey: string) {
   try {
     const text = await characterStore.exportSaveFile(characterId, slotKey)
     const date = new Date().toISOString().split('T')[0]
-    downloadJson(`大道朝天-${slotKey}-${date}.json`, text)
+    downloadJson(`纵横诸天-${slotKey}-${date}.json`, text)
   } catch (e) {
     await showAlert('导出失败', e instanceof Error ? e.message : '未知错误')
   }
@@ -456,7 +456,7 @@ function goLegacySave() {
 
 <style scoped>
 .save-screen {
-  min-height: 100vh;
+  min-height: var(--app-vh, 100vh);
   background: linear-gradient(180deg, var(--bg-1), var(--bg-2));
 }
 
@@ -553,7 +553,7 @@ function goLegacySave() {
 .save-body {
   display: grid;
   grid-template-columns: 320px 1fr;
-  min-height: calc(100vh - 64px);
+  min-height: calc(var(--app-vh, 100vh) - 64px);
 }
 
 .role-sidebar {

@@ -3,6 +3,16 @@
   --font-family-serif: ui-serif, Georgia, "Songti SC", "SimSun", serif;
 
   --ui-scale: 1;
+  --auto-ui-scale: 1;
+  --effective-ui-scale: 1;
+  --inv-effective-ui-scale: 1;
+  --app-vh: 100vh;
+  --app-vw: 100vw;
+  --device-dpr: 1;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
   --base-font-size: 16px;
   --animation-speed: 1;
 
@@ -39,10 +49,12 @@
 html,
 body {
   height: 100%;
+  overflow-x: hidden;
 }
 
 html {
   font-size: var(--base-font-size);
+  background: radial-gradient(1100px 560px at 50% 0%, var(--accent), transparent 62%), linear-gradient(180deg, var(--bg-1), var(--bg-2));
 }
 
 body {
@@ -52,8 +64,44 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  zoom: var(--ui-scale);
+  -webkit-text-size-adjust: 100%;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  min-height: var(--app-vh, 100vh);
   background: radial-gradient(1100px 560px at 50% 0%, var(--accent), transparent 62%), linear-gradient(180deg, var(--bg-1), var(--bg-2));
+}
+
+html:not(.is-ios) body {
+  zoom: var(--effective-ui-scale, var(--ui-scale));
+}
+
+html:not(.is-ios) #app {
+  width: calc(100% * var(--inv-effective-ui-scale, 1));
+  min-height: calc(var(--app-vh, 100vh) * var(--inv-effective-ui-scale, 1));
+}
+
+#app {
+  min-height: var(--app-vh, 100vh);
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+html.is-ios #app {
+  transform: scale(var(--effective-ui-scale, 1));
+  transform-origin: 0 0;
+  width: calc(100% * var(--inv-effective-ui-scale, 1));
+  min-height: calc(var(--app-vh, 100vh) * var(--inv-effective-ui-scale, 1));
+}
+
+html.is-mobile button,
+html.is-mobile [role='button'] {
+  touch-action: manipulation;
+}
+
+html.is-mobile input,
+html.is-mobile textarea,
+html.is-mobile select {
+  font-size: max(16px, 1em);
 }
 
 .light-surface {
@@ -99,7 +147,7 @@ a {
 .app-toast {
   position: fixed;
   left: 50%;
-  top: 16px;
+  top: calc(16px + var(--safe-top, 0px));
   transform: translateX(-50%);
   z-index: 3000;
   display: inline-flex;
