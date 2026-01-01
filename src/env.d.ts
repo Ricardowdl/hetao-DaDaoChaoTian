@@ -1,12 +1,15 @@
-/// <reference types="vite/client" />
+/// <reference types="webpack-env" />
 
 declare module '*.vue' {
   import type { DefineComponent } from 'vue'
-  const component: DefineComponent<{}, {}, any>
+  // Use broad types here so TS doesn't over-restrict props in templates
+  const component: DefineComponent<any, any, any>
   export default component
 }
 
-declare module '*?raw' {
-  const content: string
-  export default content
+// Augment Window with TavernHelper from tavernCore
+type TavernHelper = import('./utils/tavernCore').TavernHelper;
+interface Window {
+  TavernHelper?: TavernHelper;
 }
+

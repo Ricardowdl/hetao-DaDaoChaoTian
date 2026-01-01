@@ -1,534 +1,720 @@
+<!-- src/views/ModeSelection.vue -->
 <template>
   <div class="mode-selection-container">
-    <div class="bg-layer" />
+    <VideoBackground />
 
-    <div class="selection-stage">
-      <div class="selection-content">
-        <div class="header-container">
-          <div class="title-row">
-            <h1 class="main-title">纵 横 诸 天</h1>
-            <span class="version-tag">V0.2 内测</span>
+    <div class="selection-content">
+      <div class="header-container">
+        <div class="title-version-row">
+          <h1 class="main-title">纵 横 诸 天</h1>
+          <span class="version-tag">V1.0.2{{ $t('正式版') }}</span>
+        </div>
+        <p class="sub-title">朝游北海暮苍梧，醉卧云霞食朝露</p>
+      </div>
+
+      <div class="gate-container">
+        <!-- Left Gate: Single Player -->
+        <div
+          class="gate-card"
+          :class="{ selected: selectedMode === 'single' }"
+          @click="selectPath('single')"
+        >
+          <div class="gate-icon">
+            <User :size="44" :stroke-width="1.5" />
           </div>
-          <div class="sub-title">朝游北海暮苍梧，醉卧云霞食朝露</div>
+          <h2 class="gate-title">{{ $t('单机闭关') }}</h2>
+          <p class="gate-description">{{ $t('避世清修·心无旁骛') }}</p>
+          <p class="gate-detail">{{ $t('独居洞府，专心致志炼就大道根基') }}<br/>{{ $t('所有进度本地存储，断网亦可修行') }}</p>
         </div>
+      </div>
 
-        <div class="gate-container">
-          <div class="gate-card primary-card">
-            <div class="gate-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path
-                  d="M20 21a8 8 0 0 0-16 0"
-                  stroke="currentColor"
-                  stroke-width="1.8"
-                  stroke-linecap="round"
-                />
-                <path
-                  d="M12 13a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Z"
-                  stroke="currentColor"
-                  stroke-width="1.8"
-                />
-              </svg>
-            </div>
-            <div class="gate-title">单机闭关</div>
-            <div class="gate-sub">避世清修·心无旁骛</div>
-            <div class="gate-desc">
-              独居洞府，专心致志炼就大道根基<br />
-              所有进度本地存储，断网亦可修行
-            </div>
-            <div class="feature-list" aria-label="单机闭关特性">
-              <div class="feature-item">本地存档</div>
-              <div class="feature-item">离线可玩</div>
-              <div class="feature-item">快速继续</div>
-              <div class="feature-item">隐私清净</div>
-            </div>
-          </div>
-        </div>
+      <!-- 隐私说明 -->
+      <div class="privacy-notice">
+        <p>{{ $t('本游戏谨遵天道法则：不存储任何对话记录') }}</p>
+        <p>{{ $t('仅保留法身属性、境界进度等修行要素，确保道友隐私清净无染') }}</p>
+      </div>
 
-        <div class="notice-box">
-          存档说明：角色与进度保存在本地浏览器/本机存储中<br />
-          如需清档可在设置中重置；建议定期导出备份以防意外
+      <div class="footer-actions">
+        <div v-if="selectedMode" class="start-actions-container">
+          <button class="action-btn primary" @click="startNewGame">
+            <Sparkles :size="18" />
+            <span>{{ $t('初入纵横诸天') }}</span>
+          </button>
+          <button class="action-btn" @click="enterCharacterSelection">
+            <History :size="18" />
+            <span>{{ $t('续前世因缘') }}</span>
+          </button>
         </div>
-
-        <div class="footer-actions">
-          <button class="action-btn primary" type="button" @click="startNewGame">初入仙途</button>
-          <button class="action-btn subtle" type="button" @click="loadExistingCharacters">续前世因缘</button>
-        </div>
+        <button v-else class="scroll-btn" @click="enterCharacterSelection">
+          <span>{{ $t('续前世因缘') }}</span>
+        </button>
       </div>
     </div>
 
-    <div class="top-right">
-      <button class="icon-tile" type="button" title="全屏" @click="uiStore.toggleFullscreen()">⛶</button>
-      <button class="icon-tile" type="button" title="帮助" @click="showHelp">？</button>
-    </div>
+    <!-- 右下角设置按钮 -->
+    <button class="floating-settings-btn" @click="showSettings = true" :title="$t('设置')">
+      <Settings :size="22" />
+    </button>
 
-    <div v-if="AUTH_CONFIG.ENABLE_AUTH" class="bottom-left">
-      <div class="auth-badge" :class="authStore.isVerified ? 'ok' : 'warn'" role="button" tabindex="0" @click="handleAuthBadge">
-        <span class="dot" />
-        <span>{{ authStore.isVerified ? '已授权' : '未授权' }}</span>
+    <!-- 设置模态框 -->
+    <div v-if="showSettings" class="settings-modal-overlay" @click="showSettings = false">
+      <div class="settings-modal-content" @click.stop>
+        <div class="modal-header">
+          <h3>游戏设置</h3>
+          <button class="close-btn" @click="showSettings = false">
+            <X :size="18" />
+          </button>
+        </div>
+        <div class="modal-body">
+          <SettingsPanel />
+        </div>
       </div>
     </div>
-
-    <div class="bottom-right">
-      <button class="icon-tile" type="button" title="设置" @click="showSettings = true">⚙️</button>
-    </div>
-
-    <AuthModal v-if="AUTH_CONFIG.ENABLE_AUTH" v-model="showAuthModal" @verified="authStore.loadFromStorage()" />
-    <SettingsModal v-model="showSettings" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref } from 'vue';
+import VideoBackground from '@/components/common/VideoBackground.vue';
+import SettingsPanel from '@/components/dashboard/SettingsPanel.vue';
+import { Settings, X, Sparkles, History, User } from 'lucide-vue-next';
 
-import AuthModal from '../components/AuthModal.vue'
-import SettingsModal from '../components/SettingsModal.vue'
-import { AUTH_CONFIG } from '../config/auth'
-import { useAuthStore } from '../stores/useAuthStore'
-import { useUIStore } from '../stores/useUIStore'
+const showSettings = ref(false);
+const selectedMode = ref<'single' | null>(null);
 
-const router = useRouter()
-const authStore = useAuthStore()
-const uiStore = useUIStore()
+const emit = defineEmits<{
+  (e: 'start-creation', mode: 'single'): void;
+  (e: 'show-character-list'): void;
+}>();
 
-const showSettings = ref(false)
-const showAuthModal = ref(false)
+const selectPath = (mode: 'single') => {
+  selectedMode.value = (selectedMode.value === mode ? null : mode);
+};
 
-onMounted(async () => {
-  uiStore.applyTheme()
-  authStore.loadFromStorage()
-  await authStore.ensureMachineCode()
-})
-
-function startNewGame() {
-  if (AUTH_CONFIG.ENABLE_AUTH && !authStore.isVerified) {
-    showAuthModal.value = true
-    alert('请先完成授权验证')
-    return
+const startNewGame = () => {
+  if (selectedMode.value) {
+    emit('start-creation', selectedMode.value);
   }
+};
 
-  router.push({ name: 'CharacterCreation' })
-}
-
-function loadExistingCharacters() {
-  if (AUTH_CONFIG.ENABLE_AUTH && !authStore.isVerified) {
-    showAuthModal.value = true
-    alert('请先完成授权验证')
-    return
-  }
-
-  router.push({ name: 'CharacterManagement' })
-}
-
-function showHelp() {
-  alert('纵横诸天 v0.2 内测\n\n- 单机闭关：本地存档，离线可玩\n- 初入仙途：创建新角色\n- 续前世因缘：管理/继续已有存档')
-}
-
-function handleAuthBadge() {
-  if (!AUTH_CONFIG.ENABLE_AUTH) return
-  if (authStore.isVerified) return
-  showAuthModal.value = true
-}
+const enterCharacterSelection = async () => {
+  emit('show-character-list');
+};
 </script>
 
 <style scoped>
 .mode-selection-container {
   width: 100%;
-  height: var(--app-vh, 100vh);
-  position: relative;
-  overflow: hidden;
-}
-
-.bg-layer {
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(900px 520px at 50% 0%, rgba(59, 130, 246, 0.22), transparent 62%),
-    radial-gradient(900px 620px at 15% 70%, rgba(2, 132, 199, 0.16), transparent 60%),
-    radial-gradient(900px 620px at 85% 70%, rgba(99, 102, 241, 0.12), transparent 60%),
-    linear-gradient(180deg, rgba(2, 6, 23, 0.35), rgba(2, 6, 23, 0.92));
-  filter: saturate(1.05) brightness(0.88);
-}
-
-.selection-stage {
-  position: absolute;
-  inset: 0;
+  height: var(--app-height, calc(var(--vh, 1vh) * 100));
+  min-height: var(--app-height, calc(var(--vh, 1vh) * 100));
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: calc(18px + var(--safe-top, 0px)) 18px calc(18px + var(--safe-bottom, 0px));
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+  padding: 1.5rem;
+  box-sizing: border-box;
+  background: transparent; /* 透明背景以显示视频 */
+  overflow-y: auto; /* 允许滚动以适应小屏幕 */
+  overflow-x: hidden; /* 防止移动端出现横向滚动导致左右晃动 */
+  -webkit-overflow-scrolling: touch; /* iOS滚动优化 */
 }
 
 .selection-content {
-  background: linear-gradient(180deg, rgba(15, 23, 42, 0.78), rgba(15, 23, 42, 0.62));
-  backdrop-filter: blur(26px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 20px;
-  padding: 3.3rem 3.6rem;
-  width: min(980px, 100%);
-  display: grid;
-  gap: 2rem;
-  box-shadow: 0 30px 70px -30px rgba(0, 0, 0, 0.6);
-  animation: fadeIn 280ms ease-out;
-  position: relative;
-  overflow: hidden;
-}
-
-.selection-content::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: radial-gradient(900px 300px at 50% 0%, rgba(255, 255, 255, 0.14), transparent 60%),
-    radial-gradient(680px 260px at 18% 40%, rgba(56, 189, 248, 0.08), transparent 55%),
-    radial-gradient(680px 260px at 82% 40%, rgba(99, 102, 241, 0.06), transparent 55%);
-}
-
-.selection-content::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 -1px 0 rgba(255, 255, 255, 0.04);
-  border-radius: 20px;
+  background: var(--mode-selection-bg, rgba(15, 23, 42, 0.75));
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-radius: 16px;
+  padding: 3rem;
+  border: 1px solid var(--mode-selection-border, rgba(255, 255, 255, 0.08));
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  max-height: 90vh;
+  max-width: 920px;
+  width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2.5rem;
 }
 
 .header-container {
   text-align: center;
-  display: grid;
-  gap: 10px;
 }
 
-.title-row {
-  display: inline-flex;
+.title-version-row {
+  display: flex;
   align-items: center;
   justify-content: center;
-  gap: 14px;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
 }
 
 .main-title {
   font-family: var(--font-family-serif);
   font-size: 3rem;
-  font-weight: 350;
-  letter-spacing: 0.52em;
-  color: rgba(248, 250, 252, 0.98);
-  text-shadow: 0 0 40px rgba(147, 197, 253, 0.22);
+  font-weight: 400;
+  letter-spacing: 0.5em;
+  color: var(--mode-selection-title, #f8fafc);
   margin: 0;
+  padding-left: 0.5em;
+  text-shadow: 0 0 40px var(--mode-selection-glow, rgba(147, 197, 253, 0.3));
 }
 
 .version-tag {
-  font-size: 0.75rem;
-  color: rgba(250, 204, 21, 0.92);
-  background: rgba(2, 6, 23, 0.25);
-  border: 1px solid rgba(250, 204, 21, 0.28);
-  border-radius: 6px;
-  padding: 0.35rem 0.75rem;
+  font-size: 0.7rem;
+  font-family: 'SF Mono', 'Consolas', monospace;
+  color: #fbbf24;
+  padding: 0.25rem 0.6rem;
+  background: rgba(251, 191, 36, 0.1);
+  border: 1px solid rgba(251, 191, 36, 0.25);
+  border-radius: 4px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
 }
 
 .sub-title {
-  font-size: 1.05rem;
-  color: rgba(248, 250, 252, 0.92);
+  font-size: 1.1rem;
+  color: var(--mode-selection-subtitle, #94a3b8);
   letter-spacing: 0.2em;
-  font-weight: 400;
-  text-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  margin: 0;
+  font-weight: 300;
 }
 
 .gate-container {
   display: flex;
-  gap: 18px;
+  gap: 1.5rem;
+  width: 100%;
   justify-content: center;
 }
 
 .gate-card {
   flex: 1;
-  max-width: 520px;
-  padding: 2.2rem 1.9rem;
-  background: linear-gradient(180deg, rgba(15, 23, 42, 0.55), rgba(15, 23, 42, 0.35));
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 14px;
-  cursor: default;
-  transition: all 0.3s ease;
+  max-width: 340px;
+  padding: 2.5rem 2rem;
+  background: var(--mode-selection-card-bg, rgba(30, 41, 59, 0.5));
+  border: 1px solid var(--mode-selection-card-border, rgba(255, 255, 255, 0.06));
+  border-radius: 12px;
+  cursor: pointer;
   text-align: center;
-  display: grid;
-  gap: 10px;
-  user-select: none;
+  transition: all 0.3s ease;
   position: relative;
-  overflow: hidden;
-}
-
-.gate-card.primary-card {
-  border-color: rgba(56, 189, 248, 0.26);
-  box-shadow: 0 22px 56px -26px rgba(56, 189, 248, 0.18);
-}
-
-.gate-card::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: radial-gradient(360px 140px at 50% 0%, rgba(255, 255, 255, 0.12), transparent 60%);
-  opacity: 0.8;
 }
 
 .gate-card:hover {
-  background: linear-gradient(180deg, rgba(15, 23, 42, 0.7), rgba(15, 23, 42, 0.46));
-  border-color: rgba(148, 163, 184, 0.22);
+  background: var(--mode-selection-card-hover, rgba(30, 41, 59, 0.8));
+  border-color: var(--mode-selection-accent, rgba(147, 197, 253, 0.2));
   transform: translateY(-4px);
   box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.4);
 }
 
-.gate-icon {
-  color: rgba(226, 232, 240, 0.92);
-  display: grid;
-  place-items: center;
-  width: 46px;
-  height: 46px;
-  margin: 0 auto;
+.gate-card.selected {
+  background: var(--mode-selection-card-selected, rgba(30, 58, 138, 0.4));
+  border-color: var(--mode-selection-accent-strong, rgba(147, 197, 253, 0.4));
+  box-shadow:
+    0 20px 40px -15px rgba(0, 0, 0, 0.4),
+    0 0 0 1px var(--mode-selection-accent, rgba(147, 197, 253, 0.1)),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
-.gate-icon svg {
-  width: 42px;
-  height: 42px;
+.gate-card.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.gate-icon {
+  color: var(--mode-selection-icon, #93c5fd);
+  margin-bottom: 1.5rem;
+  opacity: 0.9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gate-card:hover .gate-icon {
+  opacity: 1;
+}
+
+.gate-card.selected .gate-icon {
+  color: var(--mode-selection-icon-selected, #bfdbfe);
 }
 
 .gate-title {
-  color: var(--text-1);
-  font-size: 1.25rem;
+  font-family: var(--font-family-serif);
+  font-size: 1.4rem;
+  font-weight: 400;
+  margin: 0 0 0.5rem 0;
+  color: var(--mode-selection-text, #f1f5f9);
+  letter-spacing: 0.1em;
 }
 
-.gate-sub {
-  color: rgba(226, 232, 240, 0.92);
-  font-weight: 600;
-  text-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+.gate-description {
+  font-size: 0.95rem;
+  color: var(--mode-selection-subtitle, #94a3b8);
+  margin: 0 0 0.75rem 0;
+  font-weight: 400;
 }
 
-.gate-desc {
-  color: rgba(226, 232, 240, 0.82);
-  font-size: 0.92rem;
+.gate-detail {
+  font-size: 0.8rem;
+  color: var(--mode-selection-muted, #64748b);
   line-height: 1.6;
-  text-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  margin: 0;
 }
 
-.feature-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  justify-content: center;
-  padding-top: 6px;
-}
-
-.feature-item {
-  font-size: 0.86rem;
-  color: rgba(226, 232, 240, 0.9);
-  padding: 6px 10px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(2, 6, 23, 0.18);
-}
-
-.badge {
+.coming-soon-badge {
   position: absolute;
-  top: 14px;
-  right: 14px;
-  font-size: 12px;
-  color: rgba(248, 113, 113, 0.92);
-  background: rgba(127, 29, 29, 0.28);
-  border: 1px solid rgba(248, 113, 113, 0.22);
-  border-radius: 8px;
-  padding: 4px 10px;
+  top: 1rem;
+  right: 1rem;
+  font-size: 0.65rem;
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.1);
+  padding: 0.2rem 0.5rem;
+  border-radius: 3px;
+  border: 1px solid rgba(248, 113, 113, 0.2);
+  font-weight: 500;
+  letter-spacing: 0.05em;
 }
 
-.notice-box {
-  background: rgba(15, 23, 42, 0.46);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  padding: 14px;
+.privacy-notice {
+  padding: 1rem 1.5rem;
+  background: rgba(251, 191, 36, 0.05);
+  border: 1px solid rgba(251, 191, 36, 0.1);
+  border-radius: 8px;
+  max-width: 560px;
   text-align: center;
-  color: rgba(248, 250, 252, 0.92);
-  font-size: 0.92rem;
-  line-height: 1.6;
-  max-width: 520px;
-  justify-self: center;
+}
+
+.privacy-notice p {
+  font-size: 0.8rem;
+  color: var(--mode-selection-subtitle, #94a3b8);
+  margin: 0.3rem 0;
+  line-height: 1.5;
 }
 
 .footer-actions {
-  display: grid;
-  justify-items: center;
-  gap: 12px;
+  display: flex;
+  justify-content: center;
+}
+
+.start-actions-container {
+  display: flex;
+  gap: 1rem;
+  animation: fadeIn 0.4s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .action-btn {
-  appearance: none;
-  background: rgba(2, 6, 23, 0.22);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  color: rgba(248, 250, 252, 0.96);
-  font-weight: 700;
-  padding: 12px 18px;
-  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background: var(--mode-selection-btn-bg, rgba(30, 41, 59, 0.6));
+  border: 1px solid var(--mode-selection-card-border, rgba(255, 255, 255, 0.08));
+  color: var(--mode-selection-btn-text, #cbd5e1);
+  font-family: var(--font-family-serif);
+  font-size: 0.95rem;
+  letter-spacing: 0.15em;
+  padding: 0.8rem 1.8rem;
+  border-radius: 8px;
   cursor: pointer;
-  transition: all 0.2s ease;
-  min-width: 180px;
+  transition: all 0.25s ease;
 }
 
 .action-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--text-1);
+  background: var(--mode-selection-btn-hover, rgba(51, 65, 85, 0.8));
+  border-color: var(--mode-selection-accent, rgba(147, 197, 253, 0.2));
+  color: var(--mode-selection-text, #f1f5f9);
 }
 
 .action-btn.primary {
-  background: rgba(30, 58, 138, 0.34);
-  border-color: rgba(56, 189, 248, 0.4);
-  color: var(--text-1);
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.8), rgba(37, 99, 235, 0.9));
+  border-color: rgba(96, 165, 250, 0.3);
+  color: #ffffff;
 }
 
 .action-btn.primary:hover {
-  background: rgba(30, 58, 138, 0.5);
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.9), rgba(37, 99, 235, 1));
+  box-shadow: 0 8px 25px -8px rgba(59, 130, 246, 0.5);
 }
 
-.action-btn.subtle {
-  background: rgba(2, 6, 23, 0.12);
-  border-color: rgba(255, 255, 255, 0.1);
-  color: rgba(248, 250, 252, 0.9);
+.scroll-btn {
+  background: transparent;
+  border: 1px solid var(--mode-selection-card-border, rgba(255, 255, 255, 0.1));
+  color: var(--mode-selection-subtitle, #94a3b8);
+  font-family: var(--font-family-serif);
+  font-size: 0.95rem;
+  letter-spacing: 0.2em;
+  padding: 0.75rem 2rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.25s ease;
 }
 
-.action-btn.subtle:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--text-2);
+.scroll-btn:hover {
+  background: var(--mode-selection-card-bg, rgba(30, 41, 59, 0.5));
+  border-color: var(--mode-selection-accent, rgba(147, 197, 253, 0.2));
+  color: var(--mode-selection-text-hover, #e2e8f0);
 }
 
-.top-right {
+/* 浮动设置按钮 */
+.floating-settings-btn {
   position: fixed;
-  top: calc(14px + var(--safe-top, 0px));
-  right: calc(14px + var(--safe-right, 0px));
+  bottom: 24px;
+  right: 24px;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: var(--mode-selection-float-bg, rgba(30, 41, 59, 0.8));
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--mode-selection-card-border, rgba(255, 255, 255, 0.08));
+  color: var(--mode-selection-subtitle, #94a3b8);
+  cursor: pointer;
   display: flex;
-  gap: 10px;
-  z-index: 10;
-}
-
-.bottom-left {
-  position: fixed;
-  left: calc(14px + var(--safe-left, 0px));
-  bottom: calc(14px + var(--safe-bottom, 0px));
-  z-index: 10;
-}
-
-.bottom-right {
-  position: fixed;
-  right: calc(14px + var(--safe-right, 0px));
-  bottom: calc(14px + var(--safe-bottom, 0px));
-  z-index: 10;
-}
-
-.icon-tile {
-  appearance: none;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(15, 23, 42, 0.6);
-  color: var(--text-1);
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  cursor: pointer;
-  transition: background 0.2s ease;
-}
-
-.icon-tile:hover {
-  background: rgba(15, 23, 42, 0.85);
-}
-
-.auth-badge {
-  display: inline-flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
+  justify-content: center;
+  transition: all 0.25s ease;
+  z-index: 100;
+}
+
+.floating-settings-btn:hover {
+  background: var(--mode-selection-float-hover, rgba(51, 65, 85, 0.9));
+  color: var(--mode-selection-text-hover, #e2e8f0);
+  border-color: var(--mode-selection-accent, rgba(147, 197, 253, 0.2));
+}
+
+/* 设置模态框 */
+.settings-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+
+.settings-modal-content {
+  background: var(--mode-selection-modal-bg, #1e293b);
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(15, 23, 42, 0.6);
-  color: var(--text-1);
+  width: 100%;
+  max-width: 700px;
+  max-height: 80vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+  border: 1px solid var(--mode-selection-card-border, rgba(255, 255, 255, 0.06));
+  animation: modalIn 0.25s ease;
+}
+
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--mode-selection-card-border, rgba(255, 255, 255, 0.06));
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 500;
+  color: var(--mode-selection-text, #f1f5f9);
+  letter-spacing: 0.05em;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  color: var(--mode-selection-muted, #64748b);
   cursor: pointer;
-  user-select: none;
+  padding: 6px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
 }
 
-.auth-badge.ok {
-  border-color: rgba(52, 211, 153, 0.3);
-}
-.auth-badge.warn {
-  border-color: rgba(251, 191, 36, 0.25);
+.close-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--mode-selection-subtitle, #94a3b8);
 }
 
-.auth-badge.ok {
-  border-color: rgba(52, 211, 153, 0.5);
-  color: rgba(209, 250, 229, 0.95);
-  background: rgba(52, 211, 153, 0.14);
+.modal-body {
+  flex: 1;
+  overflow-y: auto;
 }
 
-.auth-badge.ok .dot {
-  background: rgba(52, 211, 153, 0.9);
-}
-
-.dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 999px;
-  background: rgba(251, 191, 36, 0.9);
-}
-
-@media (max-width: 768px) {
-  .selection-content {
-    padding: 2.3rem 1.6rem;
-    gap: 1.5rem;
+/* 手机端：设置弹窗更紧凑，并隐藏 SettingsPanel 自带的头部（避免双头部占空间） */
+@media (max-width: 480px) {
+  .settings-modal-overlay {
+    padding: 10px;
   }
 
-  .selection-stage {
-    align-items: flex-start;
-    justify-content: flex-start;
+  .settings-modal-content {
+    max-height: 88vh;
+  }
+
+  .modal-header {
+    padding: 0.75rem 1rem;
+  }
+
+  .modal-header h3 {
+    font-size: 1rem;
+  }
+
+  .modal-body :deep(.panel-header) {
+    display: none;
+  }
+
+  .modal-body :deep(.settings-container) {
+    padding: 0.75rem;
+  }
+}
+
+/* 授权状态徽章 */
+.auth-status-badge {
+  position: fixed;
+  bottom: 24px;
+  left: 24px;
+  z-index: 100;
+}
+
+.auth-status-content {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.9rem;
+  background: var(--mode-selection-float-bg, rgba(30, 41, 59, 0.8));
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--mode-selection-card-border, rgba(255, 255, 255, 0.08));
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.auth-status-content:hover {
+  background: var(--mode-selection-float-hover, rgba(51, 65, 85, 0.9));
+  border-color: var(--mode-selection-accent, rgba(147, 197, 253, 0.2));
+}
+
+.status-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.status-icon.verified {
+  background: #10b981;
+  color: white;
+}
+
+.status-icon.unverified {
+  background: #ef4444;
+  color: white;
+}
+
+.status-text {
+  font-size: 0.8rem;
+  color: var(--mode-selection-subtitle, #94a3b8);
+  font-weight: 500;
+}
+
+/* 亮色主题 */
+[data-theme="light"] .mode-selection-container {
+  --mode-selection-bg: rgba(255, 255, 255, 0.85);
+  --mode-selection-border: rgba(0, 0, 0, 0.08);
+  --mode-selection-title: #1e293b;
+  --mode-selection-glow: rgba(59, 130, 246, 0.2);
+  --mode-selection-subtitle: #64748b;
+  --mode-selection-text: #1e293b;
+  --mode-selection-text-hover: #334155;
+  --mode-selection-muted: #94a3b8;
+  --mode-selection-card-bg: rgba(248, 250, 252, 0.8);
+  --mode-selection-card-border: rgba(0, 0, 0, 0.08);
+  --mode-selection-card-hover: rgba(241, 245, 249, 0.95);
+  --mode-selection-card-selected: rgba(219, 234, 254, 0.8);
+  --mode-selection-accent: rgba(59, 130, 246, 0.3);
+  --mode-selection-accent-strong: rgba(59, 130, 246, 0.5);
+  --mode-selection-icon: #3b82f6;
+  --mode-selection-icon-selected: #2563eb;
+  --mode-selection-btn-bg: rgba(248, 250, 252, 0.8);
+  --mode-selection-btn-text: #475569;
+  --mode-selection-btn-hover: rgba(241, 245, 249, 0.95);
+  --mode-selection-float-bg: rgba(255, 255, 255, 0.9);
+  --mode-selection-float-hover: rgba(248, 250, 252, 1);
+  --mode-selection-modal-bg: #ffffff;
+}
+
+/* 响应式 */
+@media (max-width: 768px) {
+  .selection-content {
+    padding: 2rem 1.5rem;
+    gap: 2rem;
+  }
+
+  .main-title {
+    font-size: 2.2rem;
+    letter-spacing: 0.3em;
+  }
+
+  .title-version-row {
+    flex-direction: column;
+    gap: 0.5rem;
   }
 
   .gate-container {
+    flex-direction: column;
     align-items: center;
   }
 
   .gate-card {
     width: 100%;
-    max-width: 420px;
+    max-width: 320px;
+    padding: 2rem 1.5rem;
   }
 
-  .main-title {
-    font-size: 2.2rem;
-    letter-spacing: 0.25em;
-  }
-}
-
-@media (max-width: 480px) {
-  .selection-stage {
-    padding: calc(14px + var(--safe-top, 0px)) 12px calc(18px + var(--safe-bottom, 0px));
-  }
-
-  .selection-content {
-    padding: 1.6rem 1.1rem;
-    gap: 1.2rem;
-  }
-
-  .main-title {
-    font-size: 1.65rem;
-    letter-spacing: 0.18em;
+  .start-actions-container {
+    flex-direction: column;
+    width: 100%;
+    max-width: 280px;
   }
 
   .action-btn {
     width: 100%;
-    min-width: 0;
-    max-width: 420px;
+    justify-content: center;
   }
 }
 
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
+@media (max-width: 480px) {
+  .mode-selection-container {
+    padding: 0.75rem;
+    align-items: flex-start;
+    padding-top: 1rem;
   }
-  to {
-    opacity: 1;
-    transform: translateY(0);
+
+  .selection-content {
+    padding: 1.25rem 1rem;
+    gap: 1.25rem;
+    border-radius: 12px;
+    max-height: none;
+  }
+
+  .main-title {
+    font-size: 1.6rem;
+    letter-spacing: 0.2em;
+  }
+
+  .sub-title {
+    font-size: 0.85rem;
+  }
+
+  .gate-card {
+    padding: 1.25rem 1rem;
+  }
+
+  .gate-icon {
+    margin-bottom: 1rem;
+  }
+
+  .gate-icon svg {
+    width: 36px;
+    height: 36px;
+  }
+
+  .gate-title {
+    font-size: 1.1rem;
+  }
+
+  .gate-description {
+    font-size: 0.85rem;
+  }
+
+  .gate-detail {
+    font-size: 0.75rem;
+  }
+
+  .privacy-notice {
+    padding: 0.6rem 0.8rem;
+  }
+
+  .privacy-notice p {
+    font-size: 0.7rem;
+  }
+
+  .action-btn {
+    padding: 0.7rem 1.2rem;
+    font-size: 0.85rem;
+  }
+
+  .floating-settings-btn {
+    bottom: 12px;
+    right: 12px;
+    width: 40px;
+    height: 40px;
+  }
+
+  .auth-status-badge {
+    bottom: 12px;
+    left: 12px;
+  }
+
+  .auth-status-content {
+    padding: 0.4rem 0.7rem;
+  }
+
+  .status-text {
+    font-size: 0.7rem;
+  }
+}
+
+/* 超小屏幕适配 (360px以下) */
+@media (max-width: 360px) {
+  .mode-selection-container {
+    padding: 0.5rem;
+  }
+
+  .selection-content {
+    padding: 1rem 0.75rem;
+    gap: 1rem;
+  }
+
+  .main-title {
+    font-size: 1.4rem;
+  }
+
+  .sub-title {
+    font-size: 0.8rem;
+    letter-spacing: 0.1em;
+  }
+
+  .gate-card {
+    padding: 1rem 0.75rem;
+  }
+
+  .gate-title {
+    font-size: 1rem;
   }
 }
 </style>

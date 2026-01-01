@@ -1,20 +1,44 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
-
 import App from './App.vue'
 import router from './router'
-import { useUndoStore } from './stores/useUndoStore'
-import { setupDeviceAdaptation } from './utils/deviceAdaptation'
+import './style.css'
+import './styles/panel-theme.css'
+import './styles/theme-overrides.css'
+import './utils/consolePatch'
+import { migrateData } from './utils/indexedDBManager'
+import { useI18n } from './i18n'
 
-import './styles/global.css'
+async function initializeApp() {
+  console.log('【应用启动】开始初始化流程...');
 
-const pinia = createPinia()
-const app = createApp(App)
-app.use(pinia).use(router)
+  // 首先执行数据迁移检查
+  await migrateData();
 
-// 启动时加载撤销历史（原版行为）
-useUndoStore(pinia).loadFromStorage()
+  console.log('【应用启动】数据迁移检查完成，开始挂载Vue应用');
+  const app = createApp(App);
 
-setupDeviceAdaptation()
+  // 全局注册 i18n
+  const { t } = useI18n();
+  app.config.globalProperties.$t = t;
 
-app.mount('#app')
+  // 全局混入，让所有组件都能使用 t 函数
+  app.mixin({
+    methods: {
+      t(key: string): string {
+        return t(key);
+      }
+    }
+  });
+
+  app.use(createPinia());
+  app.use(router);
+  app.mount('#app');
+
+  console.log('【应用启动】✅ Vue应用已成功挂载');
+}
+
+initializeApp();
+
+
+

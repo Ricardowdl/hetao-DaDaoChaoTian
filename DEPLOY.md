@@ -32,14 +32,15 @@
 4. 配置域名与 HTTPS
 5. 验证：刷新 `/game` 等路由是否正常（SPA 回退到 `index.html`）
 
-## 1. 重要说明（关于“加密/防逆向”）
+## 1. 重要说明（关于"加密/防逆向"）
 
 - 前端代码最终必须下发到浏览器，**无法做到绝对防逆向**。
-- 本仓库提供的是“提高逆向成本”的方案：
+- 本仓库提供的是"提高逆向成本"的方案：
   - 关闭 sourcemap
   - 生产环境移除 `console` / `debugger`
   - 构建产物文件名哈希
   - 对构建后的 JS 进行混淆
+  - **API 端点保护**：关键 API 字符串不被混淆，确保连接正常
 - 任何真正需要保密的内容（例如：AI Key、核心算法、付费校验逻辑）必须放到服务端。
 
 建议你把“必须保密”的内容迁移到服务端的原因：
@@ -143,6 +144,36 @@ set OBFUSCATE_LEVEL=aggressive && npm run build:release
 - `light`
 - `balanced`
 - `aggressive`
+
+### 4.3 API 端点保护说明
+
+混淆脚本 `deploy/obfuscate.mjs` 配置了 `reservedStrings`，**以下字符串不会被混淆加密**，确保游戏可以正常连接 AI 服务：
+
+**HTTP 协议和 URL**
+- `http://`、`https://`
+- `http://127.0.0.1`、`http://localhost`
+
+**外部 API 端点**
+- `api.openai.com`
+- `api.anthropic.com`
+- `generativelanguage.googleapis.com`
+- `api.deepseek.com`
+
+**API 路径**
+- `/v1/`、`/v1/models`、`/v1/chat/completions`
+- `/v1/messages`、`/v1beta/`
+- `/api/v1/`
+
+**HTTP 头部**
+- `Authorization`、`Bearer `
+- `Content-Type`、`application/json`
+- `x-api-key`、`anthropic-version`
+
+**SSE 和 HTTP 方法**
+- `data: `、`[DONE]`
+- `GET`、`POST`、`PUT`、`DELETE`
+
+如需添加新的保护字符串，编辑 `deploy/obfuscate.mjs` 中的 `reservedStrings` 数组。
 
 ### 4.3 仅用于本地验证（不是生产部署）
 

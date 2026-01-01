@@ -31,6 +31,47 @@ async function* walk(dir) {
 function getObfuscatorOptions() {
   const level = String(process.env.OBFUSCATE_LEVEL || 'balanced').toLowerCase()
 
+  // 需要保护的 API 相关字符串，防止被加密导致无法连接
+  const reservedStrings = [
+    // HTTP 协议和 URL 相关
+    'http://',
+    'https://',
+    'http://127.0.0.1',
+    'http://localhost',
+    
+    // 外部 API 端点
+    'api.openai.com',
+    'api.anthropic.com',
+    'generativelanguage.googleapis.com',
+    'api.deepseek.com',
+    
+    // API 路径
+    '/v1/',
+    '/v1/models',
+    '/v1/chat/completions',
+    '/v1/messages',
+    '/v1beta/',
+    '/api/v1/',
+    
+    // HTTP 头部
+    'Authorization',
+    'Bearer ',
+    'Content-Type',
+    'application/json',
+    'x-api-key',
+    'anthropic-version',
+    
+    // SSE 相关
+    'data: ',
+    '[DONE]',
+    
+    // fetch/axios 相关关键字
+    'GET',
+    'POST',
+    'PUT',
+    'DELETE'
+  ]
+
   const base = {
     compact: true,
     sourceMap: false,
@@ -42,7 +83,9 @@ function getObfuscatorOptions() {
     renameGlobals: false,
     simplify: true,
     transformObjectKeys: false,
-    unicodeEscapeSequence: false
+    unicodeEscapeSequence: false,
+    // 保留 API 相关字符串不被加密
+    reservedStrings: reservedStrings
   }
 
   if (level === 'aggressive') {

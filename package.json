@@ -1,5 +1,6 @@
 {
   "name": "dadao-chaotian",
+  "version": "1.0.2",
   "private": true,
   "type": "module",
   "scripts": {
@@ -7,17 +8,33 @@
     "build": "vite build",
     "obfuscate": "node deploy/obfuscate.mjs",
     "build:release": "vite build && node deploy/obfuscate.mjs",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "lint": "eslint . --ext .ts,.vue --fix",
+    "type-check": "vue-tsc --noEmit"
   },
   "dependencies": {
-    "pinia": "^2.3.0",
-    "vue": "^3.5.0",
-    "vue-router": "^4.5.0"
+    "axios": "^1.11.0",
+    "chart.js": "^4.5.1",
+    "idb": "^8.0.3",
+    "jquery": "^3.7.1",
+    "lodash": "^4.17.21",
+    "lucide-vue-next": "^0.541.0",
+    "pinia": "^3.0.4",
+    "pixi.js": "^7.4.3",
+    "vue": "^3.5.18",
+    "vue-router": "^4.6.4",
+    "vue-tsc": "^3.1.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.18",
+    "@types/jquery": "^3.5.32",
+    "@types/lodash": "^4.17.21",
+    "@types/node": "^25.0.3",
     "@vitejs/plugin-vue": "^6.0.0",
+    "@vue/compiler-sfc": "^3.5.18",
     "javascript-obfuscator": "^4.1.0",
+    "sass": "^1.87.0",
+    "sass-loader": "^16.0.6",
     "typescript": "^5.8.0",
     "vite": "^7.0.0"
   }

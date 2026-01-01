@@ -1,266 +1,270 @@
 <template>
   <div class="login-container">
-    <div class="bg-layer" />
-
     <div class="login-panel">
-      <div class="title">{{ isRegister ? '初入道门' : '登入洞天' }}</div>
-      <div class="sub">{{ isRegister ? '注册新道号，踏入修仙之路。' : '验证道友身份，以便同步云端天机。' }}</div>
+      <h2 class="title">{{ isRegisterMode ? $t('初入道门') : $t('登入洞天') }}</h2>
+      <p class="subtitle">{{ isRegisterMode ? $t('注册新道号，踏入修仙之路。') : $t('验证道友身份，以便同步云端天机。') }}</p>
 
-      <form class="form" @submit.prevent="handleSubmit">
+      <form @submit.prevent="isRegisterMode ? handleRegister() : handleLogin()">
         <div class="form-group">
-          <label class="label">道号</label>
-          <input class="input" v-model.trim="username" autocomplete="username" required />
+          <label for="username">{{ $t('道号') }}</label>
+          <input type="text" id="username" v-model="username" :placeholder="$t('请输入您的道号')" required />
         </div>
 
         <div class="form-group">
-          <label class="label">身份令牌</label>
-          <input class="input" v-model.trim="password" type="password" autocomplete="current-password" required />
+          <label for="password">{{ $t('令牌') }}</label>
+          <input type="password" id="password" v-model="password" :placeholder="$t('请输入您的身份令牌')" required />
         </div>
 
-        <div v-if="isRegister" class="form-group">
-          <label class="label">请再次输入令牌</label>
-          <input class="input" v-model.trim="password2" type="password" autocomplete="new-password" required />
+        <div v-if="isRegisterMode" class="form-group">
+          <label for="confirmPassword">{{ $t('确认令牌') }}</label>
+          <input type="password" id="confirmPassword" v-model="confirmPassword" :placeholder="$t('请再次输入令牌')" required />
         </div>
 
-        <div class="form-group turnstile-container">
-          <div ref="turnstileContainer" class="turnstile-placeholder">
-            <div class="turnstile-title">Cloudflare Turnstile</div>
-            <div class="turnstile-sub">如需联机功能，请在正式版接入验证组件</div>
-          </div>
+        <div v-if="error" class="error-message">
+          {{ error }}
         </div>
 
-        <div v-if="statusText" class="status">{{ statusText }}</div>
+        <div v-if="successMessage" class="success-message">
+          {{ successMessage }}
+        </div>
 
-        <button class="btn primary" type="submit" :disabled="submitting">
-          {{ submitting ? '处理中...' : isRegister ? '注册' : '登入' }}
-        </button>
+        <div class="form-actions">
+           <button type="button" @click="props.onBack" class="btn btn-secondary">{{ $t('返回') }}</button>
+           <button type="submit" class="btn" :class="{ 'is-loading': isLoading }" :disabled="isLoading">
+             <span class="btn-text">{{ isRegisterMode ? $t('注册') : $t('登入') }}</span>
+           </button>
+        </div>
 
-        <button class="btn" type="button" @click="toggleMode">
-          {{ isRegister ? '已有道号？立即登入' : '初来乍到？注册道号' }}
-        </button>
-
-        <button class="btn ghost" type="button" @click="goBack">返回</button>
+        <div class="form-footer">
+          <a href="#" @click.prevent="toggleMode" class="link">
+            {{ isRegisterMode ? $t('已有道号？立即登入') : $t('初来乍到？注册道号') }}
+          </a>
+        </div>
       </form>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { nextTick, onMounted, onUnmounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref } from 'vue';
+import { toast } from '../utils/toast';
+import { request } from '../services/request';
 
-const router = useRouter()
+const props = defineProps<{
+  onBack: () => void;
+}>();
 
-const isRegister = ref(false)
-const username = ref('')
-const password = ref('')
-const password2 = ref('')
+const emit = defineEmits(['loggedIn']);
 
-const submitting = ref(false)
-const statusText = ref('')
+const username = ref('');
+const password = ref('');
+const confirmPassword = ref('');
+const isLoading = ref(false);
+const error = ref<string | null>(null);
+const successMessage = ref<string | null>(null);
+const isRegisterMode = ref(false);
 
-const turnstileContainer = ref<HTMLElement | null>(null)
-let turnstileWidgetId: any = null
+const toggleMode = () => {
+  isRegisterMode.value = !isRegisterMode.value;
+  error.value = null;
+  successMessage.value = null;
+  password.value = '';
+  confirmPassword.value = '';
+};
 
-function goBack() {
-  router.push({ name: 'ModeSelection' })
-}
+const handleRegister = async () => {
+  if (isLoading.value) return; // 防止重复提交
+  if (password.value !== confirmPassword.value) {
+    error.value = '两次输入的令牌不一致！';
+    return;
+  }
 
-function toggleMode() {
-  isRegister.value = !isRegister.value
-  statusText.value = ''
-  password.value = ''
-  password2.value = ''
-
-  nextTick(() => {
-    if (turnstileWidgetId && (window as any).turnstile?.reset) {
-      ;(window as any).turnstile.reset(turnstileWidgetId)
-    }
-  })
-}
-
-async function renderTurnstile() {
-  if (!turnstileContainer.value) return
-  const w: any = window as any
-  if (!w.turnstile?.render) return
+  isLoading.value = true;
+  error.value = null;
+  successMessage.value = null;
 
   try {
-    if (turnstileWidgetId && w.turnstile.reset) {
-      w.turnstile.reset(turnstileWidgetId)
-      return
-    }
+    const resData = await request<any>('/api/v1/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({
+        user_name: username.value,
+        password: password.value,
+      }),
+    });
 
-    turnstileWidgetId = w.turnstile.render(turnstileContainer.value, {
-      sitekey: '0x4AAAAAABsSt_IBcfz18lmt',
-      callback: (_token: string) => {
-        void _token
+    successMessage.value = '注册成功！正在为您登入...';
+    toast.success('道号注册成功，欢迎踏入修仙之路！');
+
+    // 自动登录
+    setTimeout(() => {
+      handleLogin();
+    }, 1000);
+
+  } catch (e: unknown) {
+    let errorMessage = '一个未知的错误发生了';
+    if (typeof e === 'object' && e !== null) {
+      if ('detail' in e && typeof (e as any).detail === 'string') {
+        errorMessage = (e as any).detail;
+      } else if ('message' in e && typeof (e as any).message === 'string') {
+        errorMessage = (e as any).message;
       }
-    })
-  } catch {
-    void 0
-  }
-}
-
-async function handleSubmit() {
-  statusText.value = ''
-
-  if (isRegister.value && password.value !== password2.value) {
-    statusText.value = '两次输入令牌不一致'
-    return
-  }
-
-  submitting.value = true
-  try {
-    statusText.value = '当前版本仅复刻 UI，登录/注册逻辑未接入。'
-  } finally {
-    submitting.value = false
-  }
-}
-
-onMounted(() => {
-  renderTurnstile()
-})
-
-onUnmounted(() => {
-  const w: any = window as any
-  if (turnstileWidgetId && w.turnstile?.remove) {
-    try {
-      w.turnstile.remove(turnstileWidgetId)
-    } catch {
-      void 0
     }
+    error.value = errorMessage;
+    toast.error(errorMessage);
+  } finally {
+    isLoading.value = false;
   }
-  turnstileWidgetId = null
-})
+};
+
+const handleLogin = async () => {
+  if (isLoading.value) return; // 防止重复提交
+  isLoading.value = true;
+  error.value = null;
+  successMessage.value = null;
+
+  try {
+    const body = {
+      username: username.value,
+      password: password.value,
+    };
+
+    const data = await request<any>('/api/v1/auth/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+
+    // 保存token和用户名到localStorage
+    localStorage.setItem('access_token', data.access_token);
+    localStorage.setItem('username', username.value);
+
+    toast.success('登入成功，天机已连通！');
+    emit('loggedIn');
+
+  } catch (e: unknown) {
+    let errorMessage = '一个未知的错误发生了';
+    if (typeof e === 'object' && e !== null) {
+      if ('detail' in e && typeof (e as any).detail === 'string') {
+        errorMessage = (e as any).detail;
+      } else if ('message' in e && typeof (e as any).message === 'string') {
+        errorMessage = (e as any).message;
+      }
+    }
+    error.value = errorMessage;
+    toast.error(errorMessage);
+  } finally {
+    isLoading.value = false;
+  }
+};
 </script>
 
 <style scoped>
 .login-container {
   width: 100%;
-  height: var(--app-vh, 100vh);
-  position: relative;
+  height: 100%;
   display: flex;
-  align-items: center;
   justify-content: center;
-  padding: 16px;
-  overflow: hidden;
-}
-
-.bg-layer {
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(1100px 700px at 50% 0%, rgba(147, 51, 234, 0.22), transparent 60%),
-    linear-gradient(180deg, rgba(2, 6, 23, 0.4), rgba(2, 6, 23, 0.9));
-  filter: brightness(0.9);
+  align-items: center;
 }
 
 .login-panel {
-  position: relative;
-  z-index: 1;
-  width: min(520px, 100%);
-  border-radius: 16px;
-  border: 1px solid var(--panel-border);
-  background: var(--panel-bg);
-  backdrop-filter: blur(18px);
-  padding: 26px;
-  display: grid;
-  gap: 12px;
-  box-shadow: 0 30px 70px -30px rgba(0, 0, 0, 0.6);
+  width: 100%;
+  max-width: 400px;
+  padding: 2.5rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 15px;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
 }
 
 .title {
-  font-size: 22px;
-  color: var(--text-1);
+  text-align: center;
+  font-family: var(--font-family-serif);
+  font-size: 2rem;
+  color: var(--color-accent);
+  margin-top: 0;
+  margin-bottom: 0.5rem;
 }
 
-.sub {
-  color: var(--text-3);
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.form {
-  display: grid;
-  gap: 12px;
+.subtitle {
+  text-align: center;
+  color: var(--color-text-secondary);
+  margin-bottom: 2rem;
 }
 
 .form-group {
-  display: grid;
-  gap: 6px;
+  margin-bottom: 1.5rem;
 }
 
-.label {
-  color: var(--text-2);
-  font-size: 12px;
+.form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
 }
 
-.input {
-  border-radius: 12px;
-  border: 1px solid var(--panel-border);
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--text-1);
-  padding: 10px 12px;
+.form-group input {
+  width: 100%;
+  padding: 0.8rem 1rem;
+  background: rgba(0,0,0,0.2);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  color: var(--color-text);
+  font-size: 1rem;
+  box-sizing: border-box;
+  transition: var(--transition-fast);
+}
+
+.form-group input:focus {
   outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 10px rgba(var(--color-primary-rgb), 0.3);
 }
 
-.input:focus {
-  border-color: rgba(147, 51, 234, 0.55);
+.error-message {
+    color: var(--color-danger);
+    text-align: center;
+    margin-bottom: 1rem;
+    animation: fadeIn 0.3s ease;
 }
 
-.turnstile-placeholder {
-  border-radius: 12px;
-  border: 1px dashed rgba(255, 255, 255, 0.2);
-  padding: 12px;
-  color: var(--text-2);
-  background: rgba(255, 255, 255, 0.03);
+.success-message {
+    color: #7fb069;
+    text-align: center;
+    margin-bottom: 1rem;
+    animation: fadeIn 0.3s ease;
 }
 
-.turnstile-title {
-  font-size: 12px;
-  color: var(--text-2);
+.form-actions {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-top: 2rem;
 }
 
-.turnstile-sub {
-  font-size: 12px;
-  color: var(--text-3);
-  margin-top: 6px;
+.form-footer {
+    text-align: center;
+    margin-top: 1.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--color-border);
 }
 
-.status {
-  font-size: 12px;
-  color: var(--warn);
+.link {
+    color: var(--color-primary);
+    text-decoration: none;
+    transition: var(--transition-fast);
 }
 
-.btn {
-  appearance: none;
-  border-radius: 12px;
-  border: 1px solid var(--panel-border);
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--text-1);
-  padding: 10px 12px;
-  cursor: pointer;
+.link:hover {
+    color: var(--color-primary-hover);
+    text-decoration: underline;
 }
 
-.btn:hover {
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.btn.primary {
-  background: rgba(147, 51, 234, 0.22);
-  border-color: rgba(147, 51, 234, 0.55);
-}
-
-.btn.primary:hover {
-  background: rgba(147, 51, 234, 0.3);
-}
-
-.btn.ghost {
-  background: transparent;
-}
-
-.btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 </style>
